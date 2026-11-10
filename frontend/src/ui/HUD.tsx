@@ -335,8 +335,22 @@ function EventLine({ e, agents }: { e: HookEvent; agents: Record<string, AgentIn
 
 // ------------------------------------------------------------------ aircraft control
 const FREIGHTER_LABEL: Record<string, string> = {
-  impounded: 'Impounded on Pad 3', liftoff: 'Breaking free', escape: 'Running for the valley', away: 'Lost from scopes',
+  impounded: 'Impounded on Pad 3', boarding: 'Crew running aboard', liftoff: 'Breaking free', escape: 'Running for the valley', away: 'Lost from scopes',
   return: 'Under escort, inbound', landing: 'Setting down',
+}
+
+const GUNSHIP_LABEL: Record<string, string> = {
+  away: 'Out of the system', approach: 'On approach', landing: 'Setting down', landed: 'On the visitor stand', liftoff: 'Lifting off', depart: 'Departing',
+}
+const DESTROYER_LABEL: Record<string, string> = {
+  away: 'Not in the system', arrive: 'Dropping out of hyperspace', station: 'On station in high orbit', jump: 'Jumping to light speed',
+}
+/** Follow one of the simulated ships with the view cleared: out of any interior, side panel folded away. */
+function watch(id: string) {
+  const st = useStore.getState()
+  st.enterInterior(null)
+  st.follow({ kind: 'aircraft', id })
+  st.setPanel(null)
 }
 
 function AircraftPanel() {
@@ -371,8 +385,8 @@ function AircraftPanel() {
         <button onClick={commands.xwingFlyby} disabled={s.xwingActive}>Simulate X-wing attack</button>
         <button onClick={() => follow({ kind: 'aircraft', id: 'xwing' })} disabled={!s.xwingActive}>Track contact</button>
       </div>
-      <div className="kv"><span>Attack run</span><b>shoots down a picket TIE, then strafes the fuel dump</b></div>
-      <div className="kv clickable" onClick={() => { useStore.getState().enterInterior(null); useStore.getState().setCameraMode('orbit'); useStore.getState().select({ kind: 'aircraft', id: 'dump' }) }}><span>Fuel dump (south-east wall)</span><b style={{ color: s.dumpBurning ? '#ff7d70' : undefined }}>{s.dumpBurning ? 'BURNING' : 'intact'}</b></div>
+      <div className="kv"><span>Attack run</span><b>three X-wings: shoot down a picket TIE, then strafe the fuel depot</b></div>
+      <div className="kv clickable" onClick={() => { useStore.getState().enterInterior(null); useStore.getState().setCameraMode('orbit'); useStore.getState().select({ kind: 'aircraft', id: 'dump' }) }}><span>Fuel depot and truck (east apron)</span><b style={{ color: s.dumpBurning ? '#ff7d70' : undefined }}>{s.dumpBurning ? 'BURNING' : 'intact'}</b></div>
       <div className="kv"><span>Intercept</span><b>{s.patrolActive ? 'interceptor pair will pursue' : 'patrols down — no intercept'}</b></div>
       <h4>Impounded freighter · Pad 3</h4>
       <div className="kv"><span>Status</span><b>{FREIGHTER_LABEL[s.freighterPhase]}</b></div>
@@ -383,6 +397,16 @@ function AircraftPanel() {
         <button onClick={() => { useStore.getState().enterInterior(null); useStore.getState().setCameraMode('orbit'); useStore.getState().select({ kind: 'aircraft', id: 'freighter' }) }}>View pad</button>
       </div>
       <label className="chk"><input type="checkbox" checked={s.freighterAuto} onChange={(e) => commands.setFreighterAuto(e.target.checked)} /> escapes on its own every few minutes</label>
+      <h4>Visitors</h4>
+      <div className="kv"><span>Star Destroyer</span><b>{DESTROYER_LABEL[s.destroyerPhase]}</b></div>
+      <div className="kv"><span>Bounty hunter gunship</span><b>{GUNSHIP_LABEL[s.gunshipPhase]}</b></div>
+      <div className="kv"><span>Hutt sail barge</span><b>cruising the dunes</b></div>
+      <div className="btns">
+        <button className="warn" onClick={() => { if (s.destroyerPhase === 'away') commands.destroyerArrive(); useStore.getState().watchTour('destroyer') }}>{s.destroyerPhase === 'away' ? 'Watch it arrive' : 'Watch destroyer'}</button>
+        <button onClick={commands.destroyerArrive} disabled={s.destroyerPhase !== 'station'}>Order jump</button>
+        <button onClick={() => watch('gunship')} disabled={s.gunshipPhase === 'away'}>Follow gunship</button>
+        <button onClick={() => watch('barge')}>Follow sail barge</button>
+      </div>
       <h4>Duel · Pad 2</h4>
       <div className="kv"><span>Master against apprentice</span><b>in progress</b></div>
       <div className="btns">
@@ -406,7 +430,7 @@ function AircraftPanel() {
 
 const TOURS: { id: TourId; label: string }[] = [
   { id: 'flyover', label: 'Base flyover' }, { id: 'shuttle', label: 'Shuttle arrival' }, { id: 'hangar', label: 'Hangar' },
-  { id: 'command', label: 'Command chamber' }, { id: 'bunker', label: 'Server bunker' }, { id: 'agents', label: 'Agent activity' }, { id: 'duel', label: 'Lightsaber duel' },
+  { id: 'command', label: 'Command chamber' }, { id: 'bunker', label: 'Server bunker' }, { id: 'agents', label: 'Agent activity' }, { id: 'duel', label: 'Lightsaber duel' }, { id: 'destroyer', label: 'Star Destroyer' },
 ]
 
 function FacilitiesPanel() {
@@ -471,10 +495,10 @@ function Inspector() {
   }, [a?.id, a?.last_event_at]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!selection) return null
   if (selection.kind === 'aircraft') {
-    const names: Record<string, string> = { shuttle: 'Imperial Shuttle (Lambda-inspired)', xwing: 'Unidentified starfighter (X-wing-inspired)', freighter: 'Impounded light freighter (Falcon-inspired)', walker: 'Heavy assault walker (AT-AT-inspired)', dump: 'Fuel dump and fuel truck', picket: 'Picket TIE-inspired fighter' }
+    const names: Record<string, string> = { shuttle: 'Imperial Shuttle (Lambda-inspired)', xwing: 'Unidentified starfighter (X-wing-inspired)', freighter: 'Impounded light freighter (Falcon-inspired)', walker: 'Heavy assault walker (AT-AT-inspired)', dump: 'Fuel depot and fuel truck', picket: 'Picket TIE-inspired fighter', gunship: 'Bounty hunter gunship (Razor Crest-inspired)', barge: 'Hutt sail barge (inspired by the desert pleasure craft)', destroyer: 'Star Destroyer (inspired)' }
     return (
       <motion.div className="inspector" {...inspIn}>
-        <div className="ins-head"><div><div className="ins-kind">{selection.id === 'walker' ? 'SIMULATED GROUND UNIT' : selection.id === 'dump' ? 'SIMULATED INSTALLATION' : 'SIMULATED AIRCRAFT'}</div><div className="ins-name">{names[selection.id] ?? `TIE-inspired fighter ${selection.id}`}</div></div><button className="icon-btn" aria-label="Close inspector" title="Close (Esc)" onClick={() => select(null)}><IconClose /></button></div>
+        <div className="ins-head"><div><div className="ins-kind">{selection.id === 'walker' ? 'SIMULATED GROUND UNIT' : selection.id === 'destroyer' ? 'SIMULATED CAPITAL SHIP' : selection.id === 'dump' ? 'SIMULATED INSTALLATION' : 'SIMULATED AIRCRAFT'}</div><div className="ins-name">{names[selection.id] ?? `TIE-inspired fighter ${selection.id}`}</div></div><button className="icon-btn" aria-label="Close inspector" title="Close (Esc)" onClick={() => select(null)}><IconClose /></button></div>
         <div className="sim-note">Environmental simulation only. Not an AI agent, not real telemetry.</div>
         {selection.id !== 'dump' && <div className="btns"><button onClick={() => follow({ kind: 'aircraft', id: selection.id })}>Follow with camera</button></div>}
       </motion.div>

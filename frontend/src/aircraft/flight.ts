@@ -454,18 +454,20 @@ export const XWING_TIMING = { duration: 48 }
  * The shoot-down, in fractions of the flyby: the picket appears, the intruder opens fire, the picket
  * is hit when `gap` metres ahead. `closing` is the picket's speed relative to the intruder's.
  */
+/** Wingmen: seconds behind the leader (each), metres out to the side, metres higher (each). */
+export const XWING_WING = { lag: 0.55, spread: 26, rise: 5 }
 export const XWING_KILL = { appear: 0.06, fire: 0.262, hit: 0.295, gap: 170, closing: 0.8, offsetY: 26 }
-/** The fuel dump outside the south-east wall: the intruder's ground target. */
-export const FUEL_DUMP = { x: 338, z: 338, radius: 16, /** seconds a wrecked dump burns before it is rebuilt */ rebuildAfter: 110 }
-// The intruder comes in from the north-east, shoots down the picket, dives along the east wall,
-// strafes the fuel dump and climbs away to the south-east.
+/** The fuel depot and its parked fuel truck on the east apron, inside the wall: the intruders' ground target. */
+export const FUEL_DUMP = { x: 345, z: 135, radius: 16, /** seconds a wrecked dump burns before it is rebuilt */ rebuildAfter: 110 }
+// The intruders come in from the north-east, shoot down the picket, dive over the east wall,
+// strafe the fuel depot inside the base and climb away to the south-east.
 export const XWING_PATH = new FlightPath(clearSpline(liftAboveTerrain([
   new THREE.Vector3(3400, 520, -4200),
   new THREE.Vector3(2300, 330, -1900),
   new THREE.Vector3(1350, 210, -800),
   new THREE.Vector3(820, 120, -170),
-  new THREE.Vector3(500, 62, 230),
-  new THREE.Vector3(430, 80, 640),
+  new THREE.Vector3(455, 66, 150),
+  new THREE.Vector3(400, 85, 600),
   new THREE.Vector3(800, 180, 1320),
   new THREE.Vector3(1700, 300, 2200),
   new THREE.Vector3(3000, 520, 4300),
@@ -499,6 +501,10 @@ export class XWingSim {
   readonly pose: Pose & { sFoil: number; thrust: number } = {
     pos: new THREE.Vector3(), quat: new THREE.Quaternion(), bank: 0, speed: 0, visible: false, sFoil: 0, thrust: 0,
   }
+  /** Two wingmen fly the same attack in loose formation behind the leader. */
+  readonly wingmen: (Pose & { sFoil: number; thrust: number })[] = [0, 1].map(() => ({
+    pos: new THREE.Vector3(), quat: new THREE.Quaternion(), bank: 0, speed: 0, visible: false, sFoil: 0, thrust: 0,
+  }))
   /** Two interceptors chase along the same path (only when patrols are active). */
   readonly interceptors: (Pose & { thrust: number })[] = [0, 1].map(() => ({
     pos: new THREE.Vector3(), quat: new THREE.Quaternion(), bank: 0, speed: 0, visible: false, thrust: 0,
@@ -550,6 +556,7 @@ export class XWingSim {
       this.picket.visible = false
       this.firing = false
       this.strafing = false
+      this.wingmen.forEach((p) => (p.visible = false))
       this.interceptors.forEach((p) => (p.visible = false))
       return this.pose
     }
@@ -597,6 +604,19 @@ export class XWingSim {
     set(this.pose, k, speed)
     this.pose.sFoil = easeInOut(seg(k, 0.15, 0.3)) * (1 - easeInOut(seg(k, 0.8, 0.92)))
     this.pose.thrust = 0.9
+    // wingmen: a little behind, stepped out to either side and slightly high
+    this.wingmen.forEach((p, i) => {
+      const kk = (t - XWING_WING.lag * (i + 1)) / D
+      set(p, kk, speed)
+      if (p.visible) {
+        const side = i === 0 ? 1 : -1
+        _x.set(1, 0, 0).applyQuaternion(p.quat)
+        p.pos.addScaledVector(_x, side * XWING_WING.spread)
+        p.pos.y += XWING_WING.rise * (i + 1)
+      }
+      p.sFoil = this.pose.sFoil
+      p.thrust = 0.9
+    })
     this.interceptors.forEach((p, i) => {
       if (!this.intercept) { p.visible = false; return }
       const kk = (t - this.interceptLag - i * 1.2) / D
@@ -605,7 +625,8 @@ export class XWingSim {
       p.thrust = 0.95
     })
     const lastIntercept = this.intercept ? (this.interceptLag + 1.2) / D : 0
-    if (k >= 1 + lastIntercept) {
+    const lastWing = (XWING_WING.lag * 2) / D
+    if (k >= 1 + Math.max(lastIntercept, lastWing)) {
       this.active = false
       this.pose.visible = false
     }

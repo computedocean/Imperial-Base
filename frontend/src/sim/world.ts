@@ -3,7 +3,9 @@
 // NOTE: everything here is simulated scenery — it never represents real-world activity.
 import { create } from 'zustand'
 import { FUEL_DUMP, PatrolSim, ShuttleSim, XWingSim, type FlightState, type ShuttlePhase } from '../aircraft/flight'
+import { DESTROYER, DestroyerSim, type DestroyerPhase } from '../aircraft/destroyer'
 import { FreighterSim, type FreighterPhase } from '../aircraft/freighter'
+import { GunshipSim, type LanderPhase } from '../aircraft/visitors'
 import { useStore } from '../state/store'
 
 export const sim = {
@@ -12,6 +14,8 @@ export const sim = {
   patrol: new PatrolSim(),
   xwing: new XWingSim(),
   freighter: new FreighterSim(),
+  gunship: new GunshipSim(),
+  destroyer: new DestroyerSim(),
   hangarDoor: 0, // 0 closed .. 1 open
   hangarMode: 'auto' as 'auto' | 'open' | 'closed',
 }
@@ -28,13 +32,15 @@ export interface SimStatus {
   freighterPhase: FreighterPhase
   freighterProgress: number
   freighterAuto: boolean
+  gunshipPhase: LanderPhase
+  destroyerPhase: DestroyerPhase
   hangarDoor: number
   hangarMode: 'auto' | 'open' | 'closed'
 }
 
 export const useSimStatus = create<SimStatus>(() => ({
   shuttlePhase: 'away', shuttleProgress: 0, shuttleAuto: true, patrolActive: false, fighters: [], xwingActive: false, dumpBurning: false,
-  freighterPhase: 'impounded', freighterProgress: 0, freighterAuto: true,
+  freighterPhase: 'impounded', freighterProgress: 0, freighterAuto: true, gunshipPhase: 'away', destroyerPhase: 'away',
   hangarDoor: 0, hangarMode: 'auto',
 }))
 
@@ -60,10 +66,16 @@ export const commands = {
   },
   xwingFlyby() {
     if (sim.xwing.trigger(sim.time, sim.patrol.active)) {
-      feed('[SIM] UNIDENTIFIED CONTACT on the eastern horizon — classification: hostile starfighter', 'alert')
+      feed('[SIM] THREE UNIDENTIFIED CONTACTS on the eastern horizon — classification: hostile starfighters', 'alert')
       feed('[SIM] Picket fighter Sable-9 turning in to engage head-on', 'warn')
       if (sim.patrol.active) feed('[SIM] Interceptor pair vectoring to pursue', 'warn')
     }
+  },
+  /** Bring the star destroyer in now (if it is on station it jumps out first and comes back). */
+  destroyerArrive() {
+    const d = sim.destroyer
+    if (d.phase === 'away') d.t0 = sim.time - DESTROYER.timing.away + 2.5
+    else if (d.phase === 'station') { d.t0 = sim.time - DESTROYER.timing.station; feed('[SIM] Star Destroyer ordered to jump — it will return shortly') }
   },
   freighterEscape() {
     if (!sim.freighter.escape(sim.time)) feed('[SIM] Freighter escape unavailable: the freighter is not on Pad 3', 'warn')
@@ -83,6 +95,8 @@ export function stepSim(dt: number) {
   sim.patrol.update(d)
   sim.xwing.update(sim.time)
   sim.freighter.update(sim.time)
+  sim.gunship.update(sim.time)
+  sim.destroyer.update(sim.time)
   // hangar doors: open while fighters transit the hangar (auto), or on command
   let want = 0
   if (sim.hangarMode === 'open') want = 1
@@ -98,6 +112,8 @@ let acc = 0
 let lastPhase: ShuttlePhase = 'away'
 let lastFreighter: FreighterPhase = 'impounded'
 let lastKills = 0
+let lastGunship: LanderPhase = 'away'
+let lastDestroyer: DestroyerPhase = 'away'
 let lastStrikes = 0
 let dumpDown = false
 export function publishSim(dt: number) {
@@ -120,15 +136,16 @@ export function publishSim(dt: number) {
   if (sim.xwing.strikes !== lastStrikes) {
     lastStrikes = sim.xwing.strikes
     dumpDown = true
-    feed('[SIM] FUEL DUMP HIT outside the south-east wall — tanks and a fuel truck destroyed, fire crews responding', 'alert')
+    feed('[SIM] FUEL DEPOT HIT on the east apron — tanks and the fuel truck destroyed, fire crews responding', 'alert')
   }
   if (dumpDown && sim.xwing.strikeAt !== null && sim.time - sim.xwing.strikeAt >= FUEL_DUMP.rebuildAfter) {
     dumpDown = false
-    feed('[SIM] Fuel dump fire is out — depot rebuilt and back in service')
+    feed('[SIM] Fuel depot fire is out — depot rebuilt, a new fuel truck on station')
   }
   const fp = sim.freighter.phase
   if (fp !== lastFreighter) {
     const msg: Partial<Record<FreighterPhase, [string, 'alert' | 'warn' | 'sim']>> = {
+      boarding: ['[SIM] Two fugitives sprinting across Pad 3 for the impounded freighter — security to Pad 3', 'warn'],
       liftoff: ['[SIM] IMPOUNDED FREIGHTER has broken its docking clamps on Pad 3 — all batteries track', 'alert'],
       escape: ['[SIM] Freighter running the southern apron, heading for the eastern valley', 'warn'],
       away: ['[SIM] Freighter lost from scopes beyond the eastern range', 'sim'],
@@ -138,6 +155,28 @@ export function publishSim(dt: number) {
     const m = msg[fp]
     if (m) feed(m[0], m[1])
     lastFreighter = fp
+  }
+  const gp = sim.gunship.phase
+  if (gp !== lastGunship) {
+    const msg: Partial<Record<LanderPhase, string>> = {
+      approach: '[SIM] Bounty hunter gunship requesting the visitor stand — cleared to land, east apron',
+      landed: '[SIM] Gunship down on the visitor stand — bounty hunter reporting to Security',
+      liftoff: '[SIM] Gunship lifting off the visitor stand',
+      away: '[SIM] Gunship has left the system',
+    }
+    if (msg[gp]) feed(msg[gp]!)
+    lastGunship = gp
+  }
+  const dp = sim.destroyer.phase
+  if (dp !== lastDestroyer) {
+    const msg: Partial<Record<DestroyerPhase, [string, 'ok' | 'sim']>> = {
+      arrive: ['[SIM] Star Destroyer dropping out of hyperspace above the northern range', 'ok'],
+      station: ['[SIM] Star Destroyer on station in high orbit — fleet link established', 'sim'],
+      jump: ['[SIM] Star Destroyer jumping to light speed', 'sim'],
+    }
+    const m = msg[dp]
+    if (m) feed(m[0], m[1])
+    lastDestroyer = dp
   }
   if (acc < 0.25) return
   acc = 0
@@ -152,6 +191,8 @@ export function publishSim(dt: number) {
     freighterPhase: fp,
     freighterProgress: sim.freighter.progress,
     freighterAuto: sim.freighter.autoCycle,
+    gunshipPhase: gp,
+    destroyerPhase: dp,
     hangarDoor: sim.hangarDoor,
     hangarMode: sim.hangarMode,
   })

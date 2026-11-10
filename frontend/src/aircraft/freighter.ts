@@ -9,8 +9,8 @@ import { FlightPath, clamp01, clearSpline, easeInOut, orient, yawQuat, type Pose
 
 const seg = (t: number, a: number, b: number) => clamp01((t - a) / (b - a))
 
-export type FreighterPhase = 'impounded' | 'liftoff' | 'escape' | 'away' | 'return' | 'landing'
-export const FREIGHTER_TIMING = { liftoff: 7, escape: 30, away: 40, return: 34, landing: 9, autoAfter: 150 }
+export type FreighterPhase = 'impounded' | 'boarding' | 'liftoff' | 'escape' | 'away' | 'return' | 'landing'
+export const FREIGHTER_TIMING = { boarding: 9, liftoff: 7, escape: 30, away: 40, return: 34, landing: 9, autoAfter: 150 }
 export const FREIGHTER_PAD = PADS[2]
 /** Height of the model origin above the pad when it stands on its landing gear. */
 export const FREIGHTER_REST = 4.3
@@ -66,7 +66,7 @@ export class FreighterSim {
   /** 0..1 through the whole excursion (liftoff to touchdown), 0 while parked. */
   get progress() {
     const T = FREIGHTER_TIMING
-    const order: FreighterPhase[] = ['liftoff', 'escape', 'away', 'return', 'landing']
+    const order: FreighterPhase[] = ['boarding', 'liftoff', 'escape', 'away', 'return', 'landing']
     const i = order.indexOf(this.phase)
     if (i < 0) return 0
     const total = order.reduce((s, p) => s + T[p as keyof typeof T], 0)
@@ -79,7 +79,7 @@ export class FreighterSim {
 
   escape(now: number) {
     if (this.phase !== 'impounded') return false
-    this.phase = 'liftoff'
+    this.phase = 'boarding' // the crew has to reach the ship first
     this.t0 = now
     return true
   }
@@ -95,7 +95,8 @@ export class FreighterSim {
     // advance through phases (a long frame may cross more than one boundary)
     for (let guard = 0; guard < 6; guard++) {
       const t = now - this.t0
-      if (this.phase === 'impounded') { if (this.autoCycle && t >= T.autoAfter) this.go('liftoff', this.t0 + T.autoAfter); else break }
+      if (this.phase === 'impounded') { if (this.autoCycle && t >= T.autoAfter) this.go('boarding', this.t0 + T.autoAfter); else break }
+      else if (this.phase === 'boarding') { if (t >= T.boarding) this.go('liftoff', this.t0 + T.boarding); else break }
       else if (this.phase === 'liftoff') { if (t >= T.liftoff) this.go('escape', this.t0 + T.liftoff); else break }
       else if (this.phase === 'escape') { if (t >= T.escape) this.go('away', this.t0 + T.escape); else break }
       else if (this.phase === 'away') { if (t >= T.away) this.go('return', this.t0 + T.away); else break }
@@ -116,6 +117,12 @@ export class FreighterSim {
         s.pos.copy(rest)
         yawQuat(this.parkedYaw, s.quat)
         s.gear = 1; s.thrust = 0; s.speed = 0
+        break
+      case 'boarding':
+        // still on the pad while the crew runs aboard; engines spool up as the last one reaches the ramp
+        s.pos.copy(rest)
+        yawQuat(this.parkedYaw, s.quat)
+        s.gear = 1; s.thrust = 0.3 * seg(t, T.boarding - 2.5, T.boarding); s.speed = 0
         break
       case 'liftoff': {
         const k = clamp01(t / T.liftoff)
@@ -164,3 +171,69 @@ export class FreighterSim {
     return s
   }
 }
+
+// ---------------------------------------------------------------- the crew's dash for the ship
+/** Two fugitives sprint across the pad and up the boarding ramp before the ship lifts off. */
+export const BOARDING = {
+  /** metres they have to cover to the foot of the ramp */
+  run: 46,
+  /** sprinting speed, m/s */
+  speed: 6.3,
+  /** seconds the second runner starts behind the first */
+  stagger: 0.45,
+  /** seconds from the foot of the ramp to out of sight inside */
+  climb: 0.8,
+  /** foot of the ramp and the hatch above it, in the ship's own frame (x = port, z = forward) */
+  rampFoot: [-5.2, 9.3] as const,
+  hatch: [-5.2, 4.6] as const,
+}
+
+export interface Runner { x: number; y: number; z: number; heading: number; speed: number; visible: boolean }
+
+/** A point given in the parked ship's frame, in world coordinates. */
+function shipPoint(yaw: number, lx: number, lz: number): [number, number] {
+  const s = Math.sin(yaw), c = Math.cos(yaw)
+  return [FREIGHTER_PAD.x + lx * c + lz * s, FREIGHTER_PAD.z - lx * s + lz * c]
+}
+
+/**
+ * Where the two runners are `t` seconds into the boarding phase, for a ship parked at `yaw`.
+ * They come in from outside the pad along the line through the ramp, the second a pace behind and
+ * to one side; each climbs the ramp and is gone.
+ */
+export function runnersAt(t: number, yaw: number, out: Runner[] = [mkRunner(), mkRunner()]): Runner[] {
+  const [fx, fz] = shipPoint(yaw, BOARDING.rampFoot[0], BOARDING.rampFoot[1])
+  const [hx, hz] = shipPoint(yaw, BOARDING.hatch[0], BOARDING.hatch[1])
+  // they approach from straight out beyond the ramp
+  let ox = fx - FREIGHTER_PAD.x, oz = fz - FREIGHTER_PAD.z
+  const n = Math.hypot(ox, oz) || 1
+  ox /= n; oz /= n
+  for (let i = 0; i < 2; i++) {
+    const r = out[i]
+    const tau = t - i * BOARDING.stagger
+    const side = i === 0 ? 0 : 1.1 // the second runs a little wide of the first
+    const reach = BOARDING.run / BOARDING.speed
+    r.visible = tau >= 0 && tau < reach + BOARDING.climb
+    r.speed = 0
+    if (!r.visible) { r.x = fx; r.y = FREIGHTER_PAD.y; r.z = fz; r.heading = 0; continue }
+    if (tau < reach) {
+      const left = BOARDING.run - BOARDING.speed * tau
+      const ease = Math.min(1, left / 4) // the gap between them closes at the ramp
+      r.x = fx + ox * left - oz * side * ease
+      r.z = fz + oz * left + ox * side * ease
+      r.y = FREIGHTER_PAD.y
+      r.heading = Math.atan2(-ox, -oz)
+      r.speed = BOARDING.speed
+    } else {
+      const k = (tau - reach) / BOARDING.climb
+      r.x = fx + (hx - fx) * k
+      r.z = fz + (hz - fz) * k
+      r.y = FREIGHTER_PAD.y + 1.7 * k
+      r.heading = Math.atan2(hx - fx, hz - fz)
+      r.speed = BOARDING.speed * 0.7
+    }
+  }
+  return out
+}
+
+function mkRunner(): Runner { return { x: 0, y: 0, z: 0, heading: 0, speed: 0, visible: false } }

@@ -26,7 +26,7 @@ export function PicketActor({ register }: { register: (o: THREE.Object3D | null)
 }
 
 // ------------------------------------------------------------------ cannon fire
-const BOLTS = 14
+const BOLTS = 30
 const BOLT_SPEED = 950
 const MUZZLES: [number, number][] = [[5.7, 0.9], [-5.7, -0.9], [-5.7, 0.9], [5.7, -0.9]] // fired in rotation
 const _o = new THREE.Object3D()
@@ -48,11 +48,14 @@ export function LaserBolts() {
     const s = st.current
     if ((x.firing || x.strafing) && x.pose.visible) {
       s.since += dt
-      while (s.since >= 0.085) {
-        s.since -= 0.085
+      while (s.since >= 0.05) {
+        s.since -= 0.05
+        // the leader and both wingmen fire in turn
+        const ships = [x.pose, ...x.wingmen].filter((w) => w.visible)
+        const ship = ships[s.next % ships.length]
         const b = bolts[s.next++ % BOLTS]
         const [mx, my] = MUZZLES[s.muzzle++ % 4]
-        b.pos.set(mx, my, 3).applyQuaternion(x.pose.quat).add(x.pose.pos)
+        b.pos.set(mx, my, 3).applyQuaternion(ship.quat).add(ship.pos)
         // air target: the picket fighter. Ground target: the fuel dump, with the fire scattered across it
         if (x.firing) _aim.copy(x.picket.pos)
         else _aim.copy(XWING_STRAFE.target).add(_v.set(Math.sin(s.next * 2.3) * 9, -5, Math.cos(s.next * 1.7) * 9))
@@ -61,7 +64,7 @@ export function LaserBolts() {
         b.vel.copy(_aim).multiplyScalar(BOLT_SPEED)
         b.life = Math.min(0.75, range / BOLT_SPEED) // a bolt ends where it lands
       }
-    } else s.since = 0.085
+    } else s.since = 0.05
     let n = 0
     for (const b of bolts) {
       if (b.life <= 0) continue

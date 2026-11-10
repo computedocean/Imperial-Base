@@ -478,6 +478,7 @@ function cannonBurst(dist: number, seconds: number) {
 // ------------------------------------------------------------------ public API
 let shuttle: ShuttleVoice
 let freighter: ShuttleVoice
+let gunship: ShuttleVoice
 let ties: TieVoice[] = []
 let interceptors: TieVoice[] = []
 let xwing: XWingVoice
@@ -527,6 +528,7 @@ function start() {
   buildInteriorAmbience()
   shuttle = new ShuttleVoice()
   freighter = new ShuttleVoice()
+  gunship = new ShuttleVoice()
   ties = sim.patrol.fighters.map(() => new TieVoice())
   interceptors = [new TieVoice(), new TieVoice()]
   xwing = new XWingVoice()
@@ -682,6 +684,12 @@ export function updateAudio(camera: THREE.Camera, dt: number, interior: string |
   freighter.update(fr.thrust, frOn, dopplerFactor(freighter.pos, freighter.vel, p, lisVel))
   if (!last.runaway && sim.freighter.escaping) alertTone()
   last.runaway = sim.freighter.escaping
+
+  // visiting gunship: engines whenever it is flying
+  const gs = sim.gunship.state
+  const gsOn = gs.visible && gs.thrust > 0.01
+  gunship.track(gs.pos, gsOn, dt)
+  gunship.update(gs.thrust, gsOn, dopplerFactor(gunship.pos, gunship.vel, p, lisVel))
 
   // hangar doors
   door.update(Math.abs(sim.hangarDoor - last.door) / Math.max(dt, 1e-3))

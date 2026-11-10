@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { obstacleBoxes, terrainHeight } from '../world/layout'
 import {
   FlightPath, MAIN_PAD, PATROL_ROUTES, PatrolSim, SHUTTLE_APPROACH, SHUTTLE_CLIMB, SHUTTLE_TIMING, ShuttleSim,
-  FUEL_DUMP, XWING_KILL, XWING_PATH, XWING_STRAFE, XWING_TIMING, XWingSim, orient,
+  FUEL_DUMP, XWING_KILL, XWING_PATH, XWING_STRAFE, XWING_TIMING, XWING_WING, XWingSim, orient,
 } from './flight'
 
 const boxes = obstacleBoxes()
@@ -169,7 +169,7 @@ describe('x-wing shoots down the picket fighter', () => {
   it('a second flyby brings a second picket', () => {
     const sim = new XWingSim()
     sim.trigger(0, false)
-    sim.update(D + 1)
+    sim.update(D + 3) // the wingmen trail the leader out by a second or so
     expect(sim.active).toBe(false)
     expect(sim.trigger(200, false)).toBe(true)
     expect(sim.killAt).toBeNull()
@@ -185,10 +185,14 @@ describe('x-wing strafes the fuel dump', () => {
     expect(XWING_STRAFE.fire).toBeGreaterThan(XWING_KILL.hit + 0.02) // one fight at a time
     expect(XWING_STRAFE.fire).toBeLessThan(XWING_STRAFE.hit)
     expect(XWING_STRAFE.hit).toBeLessThan(XWING_STRAFE.closest)
-    // the dump sits between the wall and the walker's lane
+    // the depot is inside the wall (apothem 434 m) and clear of every building
     const r = Math.hypot(FUEL_DUMP.x, FUEL_DUMP.z)
-    expect(r - FUEL_DUMP.radius).toBeGreaterThan(450)
-    expect(r + FUEL_DUMP.radius).toBeLessThan(515)
+    expect(r + FUEL_DUMP.radius).toBeLessThan(420)
+    for (const b of boxes) {
+      const m = FUEL_DUMP.radius
+      const inside = FUEL_DUMP.x > b.min[0] - m && FUEL_DUMP.x < b.max[0] + m && FUEL_DUMP.z > b.min[2] - m && FUEL_DUMP.z < b.max[2] + m
+      expect(inside).toBe(false)
+    }
   })
   it('opens fire on the way in and destroys it exactly once per pass', () => {
     const sim = new XWingSim()
@@ -216,5 +220,28 @@ describe('x-wing strafes the fuel dump', () => {
     sim.trigger(400, false)
     sim.update(400 + 0.9 * D)
     expect(sim.strikes).toBe(2)
+  })
+})
+
+describe('x-wing flight of three', () => {
+  it('two wingmen follow the leader in formation, never on top of each other', () => {
+    const sim = new XWingSim()
+    sim.trigger(0, false)
+    const D = XWING_TIMING.duration
+    for (let k = 0.1; k < 0.95; k += 0.03) {
+      sim.update(k * D)
+      const [a, b] = sim.wingmen
+      expect(a.visible && b.visible).toBe(true)
+      for (const w of sim.wingmen) {
+        const d = w.pos.distanceTo(sim.pose.pos)
+        expect(d).toBeGreaterThan(XWING_WING.spread * 0.8)
+        expect(d).toBeLessThan(400)
+        expect(w.pos.y - terrainHeight(w.pos.x, w.pos.z)).toBeGreaterThan(40)
+      }
+      expect(a.pos.distanceTo(b.pos)).toBeGreaterThan(XWING_WING.spread)
+    }
+    sim.update(D + 5)
+    expect(sim.active).toBe(false)
+    expect(sim.wingmen.some((w) => w.visible)).toBe(false)
   })
 })

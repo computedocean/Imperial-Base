@@ -8,6 +8,7 @@ import { CameraRig } from './camera/CameraRig'
 import { ActiveInterior } from './interiors/Interiors'
 import { Crowd, type CrowdMember } from './personnel/Crowd'
 import { Duel } from './personnel/Duel'
+import { Runners } from './personnel/Runners'
 import { createCrowdSim } from './personnel/sim'
 import { publishSim, sim, stepSim } from './sim/world'
 import { QUALITY, useStore } from './state/store'
@@ -97,6 +98,7 @@ export function Scene() {
       <Walker visible={!sealed} />
       <FuelDump visible={!sealed} />
       <Duel visible={!sealed} />
+      <Runners visible={!sealed} />
       <Structures hidden={interior} />
       <Suspense fallback={null}>
         <AircraftLayer />

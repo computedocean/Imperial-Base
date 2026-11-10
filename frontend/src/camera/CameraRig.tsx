@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { aircraftObjects } from '../aircraft/AircraftLayer'
+import { DESTROYER } from '../aircraft/destroyer'
 import { FUEL_DUMP } from '../aircraft/flight'
 import { agentObjects } from '../agents/AgentLayer'
 import { actorSystem } from '../agents/actors'
@@ -253,7 +254,7 @@ function Follow() {
     if (target.kind === 'aircraft') {
       if (!o.visible) return
       const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(o.getWorldQuaternion(new THREE.Quaternion()))
-      const scale = target.id === 'shuttle' ? 55 : target.id === 'freighter' ? 70 : target.id === 'walker' ? 62 : 30
+      const scale = target.id === 'shuttle' ? 55 : target.id === 'freighter' ? 70 : target.id === 'walker' ? 62 : target.id === 'barge' ? 85 : target.id === 'gunship' ? 52 : target.id === 'destroyer' ? 2700 : 30
       const want = p.clone().addScaledVector(fwd, -scale).add(new THREE.Vector3(0, scale * 0.35, 0))
       want.y = Math.max(want.y, terrainHeight(want.x, want.z) + 4)
       camera.position.lerp(want, Math.min(1, dt * 3))
@@ -316,6 +317,16 @@ function tourShots(id: TourId): Shot[] {
         { from: [V(x - 38, y + 6, z + 24), V(x - 10, y + 4, z + 10), V(x + 24, y + 5, z - 20)], look: [V(x, y + 2, z - 10), V(x - 10, y + 1, z - 20), V(x + 26, y + 2, z + 10)], dur: 22, interior: 'bunker' },
       ]
     }
+    case 'destroyer':
+      return [{
+        from: [], look: [], dur: 9999, interior: null,
+        // from the parade ground, looking up past the citadel at the ship on station
+        dynamic: () => {
+          const d = sim.destroyer.state
+          const at = d.visible && d.stretch < 3 ? d.pos : DESTROYER.station
+          return { pos: V(330, 16, 470), look: V(at.x, at.y, at.z) }
+        },
+      }]
     case 'duel':
       return [{
         from: [], look: [], dur: 9999, interior: null,
@@ -425,7 +436,7 @@ function Orbit() {
     }
     if (c && !interior && selection?.kind === 'aircraft' && selection.id === 'dump') {
       c.target.set(FUEL_DUMP.x, 6, FUEL_DUMP.z)
-      camera.position.set(FUEL_DUMP.x + 95, 42, FUEL_DUMP.z + 80)
+      camera.position.set(FUEL_DUMP.x - 78, 34, FUEL_DUMP.z + 62) // from inside the base, the wall behind it
       c.update()
       return
     }

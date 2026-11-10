@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { Explosion, LaserBolts, PicketActor } from './Combat'
 import { Freighter } from './models/Freighter'
+import { BargeActor, DestroyerActor, GunshipActor } from './VisitorActors'
 import { Shuttle } from './models/Shuttle'
 import { TieFighter } from './models/TieFighter'
 import { XWing } from './models/XWing'
@@ -117,6 +118,23 @@ function FreighterActor() {
   )
 }
 
+function Wingman({ i }: { i: number }) {
+  const g = useRef<THREE.Group>(null)
+  const reg = useRegister(`xwing-${i + 2}`)
+  const [foil, setFoil] = useState(0)
+  useFrame(() => {
+    const p = sim.xwing.wingmen[i]
+    const o = g.current
+    if (!o) return
+    o.visible = p.visible
+    o.position.copy(p.pos)
+    o.quaternion.copy(p.quat)
+    const q = Math.round(p.sFoil * 30) / 30
+    if (q !== foil) setFoil(q)
+  })
+  return <group ref={(o) => { (g as any).current = o; reg(o) }}><XWing sFoil={foil} thrust={0.9} /></group>
+}
+
 function Picket() {
   const reg = useRegister('picket')
   return <PicketActor register={reg} />
@@ -183,6 +201,11 @@ export function AircraftLayer() {
       <ShuttleActor />
       {sim.patrol.fighters.map((_, i) => <FighterActor key={i} idx={i} />)}
       <XWingActor />
+      <Wingman i={0} />
+      <Wingman i={1} />
+      <GunshipActor register={useRegister} />
+      <BargeActor register={useRegister} />
+      <DestroyerActor register={useRegister} />
       <FreighterActor />
       <Picket />
       <LaserBolts />

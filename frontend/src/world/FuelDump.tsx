@@ -1,5 +1,5 @@
 /**
- * Fuel dump outside the south-east wall: storage tanks, pipework and a parked fuel truck.
+ * Fuel depot on the east apron, inside the wall: storage tanks, pipework and a parked fuel truck.
  * It is the X-wing's ground target. When it is hit it becomes a burning wreck under a column of
  * smoke; some time later the depot is rebuilt. Simulated scenery — not real telemetry.
  */
@@ -84,8 +84,8 @@ export function FuelDump({ visible = true }: { visible?: boolean }) {
       {[-4.5, 4.5].map((z) => <mesh key={z} position={[0, 0, z]} scale={[1, 1, 0.35]} material={m.tank}><sphereGeometry args={[2.6, 16, 10]} /></mesh>)}
     </group>
   )
-  // tanks against the wall, truck and crates on the open side (the dump is to the south-east of the base)
-  const yaw = Math.atan2(FUEL_DUMP.x, FUEL_DUMP.z)
+  // tanks towards the wall, truck and crates on the side facing the base
+  const yaw = Math.atan2(-FUEL_DUMP.x, -FUEL_DUMP.z)
 
   return (
     <group name="fuel-dump" visible={visible} position={[FUEL_DUMP.x, 0, FUEL_DUMP.z]} rotation={[0, yaw, 0]}>

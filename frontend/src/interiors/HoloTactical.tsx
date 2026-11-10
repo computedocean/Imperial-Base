@@ -46,6 +46,8 @@ export function HoloTactical(props: ThreeElements['group']) {
       put(sim.xwing.pose.pos, sim.xwing.pose.visible)
       put(sim.freighter.state.pos, sim.freighter.state.visible)
       put(sim.xwing.picket.pos, sim.xwing.picket.visible)
+      for (const w of sim.xwing.wingmen) put(w.pos, w.visible)
+      put(sim.gunship.state.pos, sim.gunship.state.visible)
       m.count = n
       m.instanceMatrix.needsUpdate = true
     }

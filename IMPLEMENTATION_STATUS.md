@@ -115,6 +115,19 @@ New scenery (all simulated, all original geometry):
   saber flying back to its owner. The figures have faces, legs and boots; planted feet stay put and step.
   Cinematic tour *Lightsaber duel*; label `DUEL · PAD 2` is clickable.
 
+* ✅ **Flight of three X-wings**: two wingmen fly the attack in formation behind the leader and all three fire.
+  The **fuel depot and its fuel truck now stand inside the wall** on the east apron, so the strafing run hits
+  inside the base.
+* ✅ **Crew dash** (`personnel/Runners.tsx`, `runnersAt` in `aircraft/freighter.ts`): before the freighter escapes,
+  a smuggler and his tall shaggy co-pilot sprint across Pad 3 and up the ramp (new 9 s `boarding` phase).
+* ✅ **Bounty hunter gunship** (Razor Crest-inspired, `models/Gunship.tsx`, `aircraft/visitors.ts`): flies in, lands
+  on a painted visitor stand on the east apron, waits 70 s and leaves; repeats.
+* ✅ **Hutt sail barge** (`models/SailBarge.tsx`): drifts in a 780 m circle over the dunes outside the base,
+  riding the terrain.
+* ✅ **Star Destroyer** (`models/StarDestroyer.tsx`, `aircraft/destroyer.ts`): drops out of hyperspace high over the
+  northern range as a streak of light with a flash, holds station for 150 s, then jumps away and returns later.
+  Air Control: *Watch it arrive* / *Order jump*; cinematic tour *Star Destroyer*.
+
 Not verified on 2026-11-10: real-GPU frame rate with the new scenery (the preview pane was throttled while
 testing), the new sounds by ear, and `start.cmd` end to end (its stale-build check was run on its own).
 
