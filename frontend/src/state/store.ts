@@ -73,6 +73,8 @@ interface State {
   setQuality(q: Quality): void
   setCameraMode(m: CameraMode): void
   startTour(t: TourId | null): void
+  /** Start a tour as a show: leave any interior and fold the side panel away so nothing covers the view. */
+  watchTour(t: TourId): void
   follow(s: Selection): void
   select(s: Selection): void
   enterInterior(d: DepartmentId | null): void
@@ -140,6 +142,7 @@ export const useStore = create<State>((set, get) => ({
   },
   setCameraMode(m) { set({ cameraMode: m, tour: m === 'cinematic' ? get().tour ?? 'flyover' : null }) },
   startTour(t) { set({ tour: t, cameraMode: t ? 'cinematic' : 'orbit' }) },
+  watchTour(t) { set({ tour: t, cameraMode: 'cinematic', interior: null, panel: null, selection: null, followTarget: null }) },
   follow(s) { set({ followTarget: s, cameraMode: s ? 'follow' : 'orbit', tour: null }) },
   select(s) { set({ selection: s }) },
   enterInterior(d) { set({ interior: d, cameraMode: get().cameraMode === 'tactical' ? 'orbit' : get().cameraMode }) },

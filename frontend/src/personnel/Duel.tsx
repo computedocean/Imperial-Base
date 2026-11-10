@@ -212,7 +212,7 @@ export function Duel({ visible = true }: { visible?: boolean }) {
   const sparkMat = useMemo(() => new THREE.SpriteMaterial({ map: glow, color: '#fff6d8', toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), [glow])
   const showLabels = useStore((s) => s.showLabels)
   const interior = useStore((s) => s.interior)
-  const startTour = useStore((s) => s.startTour)
+  const watchTour = useStore((s) => s.watchTour)
 
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.1)
@@ -245,7 +245,7 @@ export function Duel({ visible = true }: { visible?: boolean }) {
       {showLabels && !interior && (
         <Billboard position={[DUEL_PAD.x, DUEL_PAD.y + 16, DUEL_PAD.z]}>
           <Text fontSize={6} color="#9fd0ff" anchorX="center" anchorY="bottom" outlineWidth={0.2} outlineColor="#000" letterSpacing={0.15}
-            onClick={(e) => { e.stopPropagation(); startTour('duel') }}>
+            onClick={(e) => { e.stopPropagation(); watchTour('duel') }}>
             DUEL · PAD 2
           </Text>
         </Billboard>

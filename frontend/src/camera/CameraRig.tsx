@@ -7,7 +7,7 @@ import { FUEL_DUMP } from '../aircraft/flight'
 import { agentObjects } from '../agents/AgentLayer'
 import { actorSystem } from '../agents/actors'
 import { INTERIORS } from '../interiors/layouts'
-import { duelLive } from '../personnel/Duel'
+import { createDuelState, duelAt } from '../personnel/duelMoves'
 import { HeroCharacter } from '../personnel/HeroCharacter'
 import { sim } from '../sim/world'
 import { useStore, type TourId } from '../state/store'
@@ -276,6 +276,8 @@ function Follow() {
 interface Shot { from: THREE.Vector3[]; look: THREE.Vector3[] | (() => THREE.Vector3); dur: number; interior?: DepartmentId | null; dynamic?: (t: number) => { pos: THREE.Vector3; look: THREE.Vector3 } }
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
 
+const duelScratch = createDuelState()
+
 function tourShots(id: TourId): Shot[] {
   const pad = PADS[0]
   switch (id) {
@@ -317,12 +319,14 @@ function tourShots(id: TourId): Shot[] {
     case 'duel':
       return [{
         from: [], look: [], dur: 9999, interior: null,
-        // a slow orbit around the fight, low enough to see the blades against the sky
+        // a slow orbit around the fight, a little above head height so the whole pad is in view
         dynamic: (t) => {
-          const f = duelLive.focus
+          // work the fight's position out here, from the clock: never depend on another component having run
+          const duel = duelAt(sim.time, duelScratch)
+          const f = duel.focus
           const ang = t * 0.11
-          const r = 3.3 + duelLive.gap * 0.85 + Math.sin(t * 0.07) * 0.8 // wider when they stand apart
-          return { pos: V(f.x + Math.cos(ang) * r, f.y + 0.35 + Math.sin(t * 0.05) * 0.5, f.z + Math.sin(ang) * r), look: V(f.x, f.y, f.z) }
+          const r = 5 + duel.gap * 0.9 + Math.sin(t * 0.07) * 0.8 // wider when they stand apart
+          return { pos: V(f.x + Math.cos(ang) * r, f.y + 1.9 + Math.sin(t * 0.05) * 0.6, f.z + Math.sin(ang) * r), look: V(f.x, f.y, f.z) }
         },
       }]
     case 'agents':
@@ -351,7 +355,8 @@ function Cinematic() {
   const t = useRef(0)
   const look = useRef(new THREE.Vector3())
   const shotIdx = useRef(-1)
-  useEffect(() => { t.current = 0; shotIdx.current = -1 }, [tour])
+  const cut = useRef(true)
+  useEffect(() => { t.current = 0; shotIdx.current = -1; cut.current = true }, [tour])
   useFrame((_, dt) => {
     t.current += Math.min(dt, 0.1)
     const total = shots.reduce((s, x) => s + x.dur, 0)
@@ -365,6 +370,12 @@ function Cinematic() {
     }
     if (s.dynamic) {
       const r = s.dynamic(t.current)
+      if (cut.current) {
+        // starting a tour is a cut: go straight to the subject instead of drifting there through the buildings
+        cut.current = false
+        camera.position.copy(r.pos)
+        look.current.copy(r.look)
+      }
       camera.position.lerp(r.pos, Math.min(1, dt * 1.5))
       look.current.lerp(r.look, Math.min(1, dt * 3))
       camera.lookAt(look.current)

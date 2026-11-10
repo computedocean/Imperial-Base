@@ -367,7 +367,7 @@ function AircraftPanel() {
       ))}
       <h4>Unidentified contacts</h4>
       <div className="btns">
-        <button className="warn" onClick={() => { commands.xwingFlyby(); useStore.getState().enterInterior(null); follow({ kind: 'aircraft', id: 'xwing' }) }} disabled={s.xwingActive}>Watch the attack</button>
+        <button className="warn" onClick={() => { commands.xwingFlyby(); useStore.getState().enterInterior(null); follow({ kind: 'aircraft', id: 'xwing' }); useStore.getState().setPanel(null) }} disabled={s.xwingActive}>Watch the attack</button>
         <button onClick={commands.xwingFlyby} disabled={s.xwingActive}>Simulate X-wing attack</button>
         <button onClick={() => follow({ kind: 'aircraft', id: 'xwing' })} disabled={!s.xwingActive}>Track contact</button>
       </div>
@@ -386,7 +386,7 @@ function AircraftPanel() {
       <h4>Duel · Pad 2</h4>
       <div className="kv"><span>Master against apprentice</span><b>in progress</b></div>
       <div className="btns">
-        <button onClick={() => startTour('duel')}>Watch the duel</button>
+        <button onClick={() => useStore.getState().watchTour('duel')}>Watch the duel</button>
       </div>
       <h4>Ground forces</h4>
       <div className="kv"><span>Heavy walker Thunder-1</span><b>perimeter patrol</b></div>
