@@ -381,7 +381,7 @@ function AircraftPanel() {
       </div>
       <label className="chk"><input type="checkbox" checked={s.freighterAuto} onChange={(e) => commands.setFreighterAuto(e.target.checked)} /> escapes on its own every few minutes</label>
       <h4>Duel · Pad 2</h4>
-      <div className="kv"><span>Two duellists, blue against red</span><b>in progress</b></div>
+      <div className="kv"><span>Master against apprentice</span><b>in progress</b></div>
       <div className="btns">
         <button onClick={() => startTour('duel')}>Watch the duel</button>
       </div>

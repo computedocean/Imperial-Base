@@ -103,9 +103,13 @@ New scenery (all simulated, all original geometry):
 * ✅ **Shoot-down** during the X-wing flyby (`aircraft/Combat.tsx`, `XWING_KILL` in `flight.ts`): a picket TIE closes
   head-on, the X-wing opens fire, the TIE explodes (flash, fireball, smoke, tumbling wreckage that lands), and the
   X-wing flies through the debris. Cannon and explosion sounds arrive late with distance.
-* ✅ **Lightsaber duel** on Secondary Pad 2 (`personnel/Duel.tsx`, `personnel/duelMoves.ts`): a tan-robed master
-  (blue blade) against a dark-robed knight (red blade), circling, pressing and giving ground, with a spark at
-  every clash and coloured light on the deck. Cinematic tour *Lightsaber duel*; label `DUEL · PAD 2` is clickable.
+* ✅ **Lightsaber duel** on Secondary Pad 2 (`personnel/Duel.tsx`, `personnel/duelMoves.ts`, `personnel/footwork.ts`):
+  a tan-robed master against his dark-robed apprentice, both with blue blades, staged as a 43-second sparring
+  round that repeats elsewhere on the pad: face-off and ignition, circling in, the apprentice attacking while the
+  master gives ground, a blade lock face to face, a break, the master pressing, the apprentice spinning and
+  leaping, a disarm (the saber tumbles to the deck and goes dark), the master holding his blade on him, and the
+  saber flying back to its owner. The figures have faces, legs and boots; planted feet stay put and step.
+  Cinematic tour *Lightsaber duel*; label `DUEL · PAD 2` is clickable.
 
 Not verified on 2026-11-10: real-GPU frame rate with the new scenery (the preview pane was throttled while
 testing), the new sounds by ear, and `start.cmd` end to end (its stale-build check was run on its own).

@@ -320,8 +320,8 @@ function tourShots(id: TourId): Shot[] {
         dynamic: (t) => {
           const f = duelLive.focus
           const ang = t * 0.11
-          const r = 7.5 + Math.sin(t * 0.07) * 2
-          return { pos: V(f.x + Math.cos(ang) * r, f.y + 0.9 + Math.sin(t * 0.05) * 0.8, f.z + Math.sin(ang) * r), look: V(f.x, f.y, f.z) }
+          const r = 3.3 + duelLive.gap * 0.85 + Math.sin(t * 0.07) * 0.8 // wider when they stand apart
+          return { pos: V(f.x + Math.cos(ang) * r, f.y + 0.35 + Math.sin(t * 0.05) * 0.5, f.z + Math.sin(ang) * r), look: V(f.x, f.y, f.z) }
         },
       }]
     case 'agents':
