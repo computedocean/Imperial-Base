@@ -1,11 +1,12 @@
 import { AnimatePresence, MotionConfig, motion, type Transition } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { STATUS_COLOR } from '../agents/AgentLayer'
+import { dutyCounts, dutyOf, isOnDuty, needsAttention, rosterRank, statsSince } from '../agents/liveness'
 import { SoundControl, SoundMixPanel, useSound } from '../audio/AudioLayer'
 import { doorPrompt, enterAt, exitInterior } from '../camera/CameraRig'
 import { INTERIORS } from '../interiors/layouts'
 import { commands, useSimStatus } from '../sim/world'
-import { QUALITY, useStore, type CameraMode, type Quality, type TourId } from '../state/store'
+import { QUALITY, useStore, type CameraMode, type Quality, type RosterFilter, type TourId } from '../state/store'
 import type { AgentInfo, HookEvent, TaskInfo } from '../state/types'
 import { IconAlert, IconBranch, IconClock, IconClose, IconMoon, IconSun } from './icons'
 import { FACILITIES, PLANET, facilityById, type DepartmentId } from '../world/layout'
@@ -35,15 +36,13 @@ function useTick(ms = 1000) {
   useEffect(() => { const t = setInterval(() => set((x) => x + 1), ms); return () => clearInterval(t) }, [ms])
 }
 
-type RosterFilter = 'live' | 'working' | 'waiting' | 'failed' | 'all'
-
 function agentHaystack(a: AgentInfo) {
-  return `${a.name} ${a.role} ${a.status} ${a.active_tool ?? ''} ${a.project ?? ''} ${a.department} ${facilityById[a.department]?.name ?? ''} ${a.assignment ?? ''}`.toLowerCase()
+  return `${a.name} ${a.role} ${a.status} ${a.active_tool ?? ''} ${a.project ?? ''} ${a.department} ${facilityById[a.department]?.name ?? ''} ${a.assignment ?? ''} ${a.client_label ?? ''}`.toLowerCase()
 }
 
-function matchesRoster(a: AgentInfo, filter: RosterFilter, query: string) {
-  const live = a.status !== 'disconnected' && a.status !== 'completed'
-  if (filter === 'live' && !live) return false
+function matchesRoster(a: AgentInfo, filter: RosterFilter, query: string, now: number) {
+  if (filter === 'live' && !isOnDuty(a, now)) return false
+  if (filter === 'attention' && !needsAttention(a, now)) return false
   if (filter === 'working' && a.status !== 'working' && a.status !== 'delegating' && a.status !== 'active') return false
   if (filter === 'waiting' && a.status !== 'waiting' && a.status !== 'idle') return false
   if (filter === 'failed' && a.status !== 'failed') return false
@@ -85,11 +84,25 @@ function TimeButton() {
   return <button className="with-ico" onClick={cycle} title="Time of day (N)" aria-label={`Time of day: ${TOD_LABEL[tod]}. Click to change`}>{tod === 'night' ? <IconMoon /> : <IconSun />} {TOD_LABEL[tod]}</button>
 }
 
+/** Opens the roster on the agents that are blocked on the Commander and selects the most recent one. */
+function showAttention() {
+  const st = useStore.getState()
+  const now = Date.now() / 1000
+  const first = Object.values(st.agents).filter((a) => needsAttention(a, now)).sort((a, b) => b.last_event_at - a.last_event_at)[0]
+  st.setRosterFilter('attention')
+  st.setPanel('agents')
+  if (first) st.select({ kind: 'agent', id: first.id })
+}
+
 function TopBar() {
+  useTick(15000) // duty counts also change with the passing of time (stale, signed off)
   const { connected, ingest, quality, setQuality, cameraMode, setCameraMode, agents, interior } = useStore()
-  const roster = Object.values(agents)
-  const live = roster.filter((a) => !['disconnected', 'completed'].includes(a.status) && !a.stale).length
-  const failed = roster.filter((a) => a.status === 'failed').length
+  const now = Date.now() / 1000
+  const duty = useMemo(() => dutyCounts(Object.values(agents), now), [agents, Math.floor(now / 15)]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const bits = [duty.attention ? `${duty.attention} need you` : '', duty.busy ? `${duty.busy} working` : ''].filter(Boolean)
+    document.title = `${bits.length ? `(${bits.join(' · ')}) ` : ''}Imperial Base`
+  }, [duty.attention, duty.busy])
   return (
     <motion.div className="topbar" initial={{ y: -56, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -56, opacity: 0 }} transition={EASE}>
       <div className="brand">
@@ -113,9 +126,10 @@ function TopBar() {
       <BaseClock />
       <div className="status">
         <span className={`pill ${connected ? 'ok live' : 'bad'}`}>{connected ? '● AGENT LINK LIVE' : '○ AGENT LINK OFFLINE'}</span>
-        <span className="pill">{live} ACTIVE AGENT{live === 1 ? '' : 'S'}</span>
-        {failed > 0 && <span className="pill bad">{failed} FAILED</span>}
-        {ingest && <span className={`pill ${ingest.hook_installed ? '' : 'warn'}`} title={ingest.spool}>{ingest.hook_installed ? 'HOOK INSTALLED' : 'HOOK NOT INSTALLED'}</span>}
+        {duty.attention > 0 && <button className="pill attn" onClick={showAttention} title="Agents waiting for your permission, or whose last turn failed">{duty.attention} NEED{duty.attention === 1 ? 'S' : ''} YOU</button>}
+        <span className={`pill ${duty.busy ? 'ok' : ''}`} title="Agents confirmed working right now">{duty.busy} WORKING</span>
+        <span className="pill standby" title="Agents on the base awaiting orders, or whose current activity is unknown">{duty.standby} STANDBY</span>
+        {ingest && !ingest.hook_installed && <span className="pill warn" title={`Run: python scripts\\install_hooks.py — spool: ${ingest.spool}`}>HOOK NOT INSTALLED</span>}
         <TimeButton />
         <SoundControl />
         <select value={quality} onChange={(e) => setQuality(e.target.value as Quality)} title="Graphics quality">
@@ -133,15 +147,17 @@ function StatusDot({ s }: { s: AgentInfo['status'] }) {
 
 function AgentRow({ a, depth, all, visible }: { a: AgentInfo; depth: number; all: Record<string, AgentInfo>; visible: (a: AgentInfo) => boolean }) {
   const select = useStore((s) => s.select)
+  const follow = useStore((s) => s.follow)
   const sel = useStore((s) => s.selection?.kind === 'agent' && s.selection.id === a.id)
   const kids = a.children.map((c) => all[c]).filter((k): k is AgentInfo => !!k && visible(k))
+  const duty = dutyOf(a, Date.now() / 1000)
   return (
     <>
-      <motion.div layout="position" {...rowIn} role="button" tabIndex={0} className={`agent-row ${sel ? 'sel' : ''}`} style={{ paddingLeft: 8 + depth * 16 }} onClick={() => select({ kind: 'agent', id: a.id })} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select({ kind: 'agent', id: a.id }) } }}>
+      <motion.div layout="position" {...rowIn} role="button" tabIndex={0} className={`agent-row ${sel ? 'sel' : ''} duty-${duty}`} style={{ paddingLeft: 8 + depth * 16 }} title="Click to inspect · double-click to follow" onClick={() => select({ kind: 'agent', id: a.id })} onDoubleClick={() => duty !== 'off' && follow({ kind: 'agent', id: a.id })} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select({ kind: 'agent', id: a.id }) } }}>
         {depth > 0 && <IconBranch className="branch" size={12} />}
         <StatusDot s={a.status} />
         <div className="ar-main">
-          <div className="ar-name">{a.name} <span className="ar-role">{a.role}</span></div>
+          <div className="ar-name">{a.name} <span className="ar-role">{a.role}</span>{a.client && a.client !== 'claude-code' && <span className="ar-client">{a.client_label ?? a.client}</span>}{duty === 'attention' && <span className="ar-attn">{a.status === 'failed' ? 'FAILED' : 'NEEDS YOU'}</span>}</div>
           <div className="ar-sub">{a.status}{a.active_tool ? ` · ${a.active_tool}` : ''} · {facilityById[a.department]?.short ?? a.department} · {a.project ?? '—'} · {ago(a.last_event_at)}{a.stale ? ' · activity unknown' : ''}</div>
         </div>
       </motion.div>
@@ -150,31 +166,66 @@ function AgentRow({ a, depth, all, visible }: { a: AgentInfo; depth: number; all
   )
 }
 
+function DayStats() {
+  const agents = useStore((s) => s.agents)
+  const tasks = useStore((s) => s.tasks)
+  const midnight = new Date().setHours(0, 0, 0, 0) / 1000
+  const st = useMemo(() => statsSince(Object.values(agents), midnight), [agents, midnight])
+  const missions = useMemo(() => Object.values(tasks).filter((t) => t.started_at >= midnight && t.kind !== 'report').length, [tasks, midnight])
+  return (
+    <div className="daystats" title="Totals for agents that reported at least one event since local midnight. Tokens are whole-session totals, read after each turn.">
+      <div><b>{st.sessions}</b><span>sessions</span></div>
+      <div><b>{st.subagents}</b><span>subagents</span></div>
+      <div><b>{missions}</b><span>missions</span></div>
+      <div><b>{fmtTokens(st.toolCalls)}</b><span>tool calls</span></div>
+      <div><b className={st.errors ? 'err' : ''}>{st.errors}</b><span>errors</span></div>
+      <div><b>{st.tokens ? fmtTokens(st.tokens) : '—'}</b><span>tokens</span></div>
+    </div>
+  )
+}
+
+const ROSTER_FILTERS: [RosterFilter, string][] = [['live', 'On duty'], ['working', 'Working'], ['attention', 'Needs you'], ['waiting', 'Standby'], ['failed', 'Failed'], ['all', 'All']]
+
 function AgentsPanel() {
   useTick(5000)
   const agents = useStore((s) => s.agents)
   const ingest = useStore((s) => s.ingest)
   const connected = useStore((s) => s.connected)
+  const filter = useStore((s) => s.rosterFilter)
+  const setFilter = useStore((s) => s.setRosterFilter)
   const [showAll, setShowAll] = useState(false)
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<RosterFilter>('live')
   const q = query.trim().toLowerCase()
+  const bucket = Math.floor(Date.now() / 5000) // re-evaluate the time-based rules with the 5 s tick
+  const self = useMemo(() => (a: AgentInfo) => {
+    const t = Date.now() / 1000
+    // ended and long-silent agents stay out unless asked for (the "All" filter or the checkbox)
+    const recent = showAll || filter === 'all' || isOnDuty(a, t) || (a.status === 'completed' && t - a.last_event_at < 3600)
+    return recent && matchesRoster(a, filter, q, t)
+  }, [showAll, filter, q, bucket]) // eslint-disable-line react-hooks/exhaustive-deps
   const visible = useMemo(() => {
-    const self = (a: AgentInfo) => (showAll || (a.status !== 'disconnected' && Date.now() / 1000 - a.last_event_at < 12 * 3600)) && matchesRoster(a, filter, q)
     const keep = (a: AgentInfo): boolean => self(a) || a.children.some((id) => agents[id] && keep(agents[id]))
     return keep
-  }, [agents, showAll, filter, q])
-  const roots = useMemo(() => Object.values(agents)
-    .filter((a) => a.kind === 'main' || !a.parent_id || !agents[a.parent_id])
-    .filter((a) => visible(a))
-    .sort((a, b) => b.last_event_at - a.last_event_at), [agents, visible])
-  const shown = useMemo(() => Object.values(agents).filter((a) => matchesRoster(a, filter, q) && (showAll || (a.status !== 'disconnected' && Date.now() / 1000 - a.last_event_at < 12 * 3600))).length, [agents, filter, q, showAll])
+  }, [agents, self])
+  const roots = useMemo(() => {
+    const t = Date.now() / 1000
+    return Object.values(agents)
+      .filter((a) => a.kind === 'main' || !a.parent_id || !agents[a.parent_id])
+      .filter((a) => visible(a))
+      .map((a) => ({ a, rank: rosterRank(a, agents, t) }))
+      .sort((x, y) => x.rank - y.rank || y.a.last_event_at - x.a.last_event_at)
+      .slice(0, 150)
+      .map((x) => x.a)
+  }, [agents, visible])
+  const shown = useMemo(() => Object.values(agents).filter(self).length, [agents, self])
+  const unfiltered = !q && filter === 'live'
   return (
     <div className="panel-body">
+      <DayStats />
       <div className="panel-tools">
         <SearchField value={query} onChange={setQuery} label="Search agents" />
         <div className="chips" role="toolbar" aria-label="Agent status">
-          {([['live', 'Live'], ['working', 'Working'], ['waiting', 'Waiting'], ['failed', 'Failed'], ['all', 'All']] as const).map(([id, label]) => (
+          {ROSTER_FILTERS.map(([id, label]) => (
             <button key={id} className={filter === id ? 'on' : ''} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>
           ))}
         </div>
@@ -182,13 +233,13 @@ function AgentsPanel() {
         <span className="tool-count">{shown} shown</span>
       </div>
       {!connected && <div className="empty">Backend not reachable. Start it with <code>start.cmd</code>. Aircraft and personnel simulation keep running.</div>}
-      {connected && roots.length === 0 && !q && filter === 'live' && (
+      {connected && roots.length === 0 && unfiltered && (
         <div className="empty">
-          No Claude Code agents have reported yet.
+          {Object.keys(agents).length ? 'No agents are on duty right now. Start a Claude Code session, or pick "All" to see past ones.' : 'No Claude Code agents have reported yet.'}
           {ingest && !ingest.hook_installed && <><br /><br />Install the capture hook (one time):<br /><code>python scripts\install_hooks.py</code><br />then start any Claude Code session.</>}
         </div>
       )}
-      {connected && roots.length === 0 && (q || filter !== 'live') && <div className="empty">No agents match this filter.</div>}
+      {connected && roots.length === 0 && !unfiltered && <div className="empty">No agents match this filter.</div>}
       <AnimatePresence initial={false}>{roots.map((a) => <AgentRow key={a.id} a={a} depth={0} all={agents} visible={visible} />)}</AnimatePresence>
       <div className="legend">
         {(Object.keys(STATUS_COLOR) as AgentInfo['status'][]).map((s) => <span key={s}><StatusDot s={s} />{s}</span>)}
@@ -283,6 +334,11 @@ function EventLine({ e, agents }: { e: HookEvent; agents: Record<string, AgentIn
 }
 
 // ------------------------------------------------------------------ aircraft control
+const FREIGHTER_LABEL: Record<string, string> = {
+  impounded: 'Impounded on Pad 3', liftoff: 'Breaking free', escape: 'Running for the valley', away: 'Lost from scopes',
+  return: 'Under escort, inbound', landing: 'Setting down',
+}
+
 function AircraftPanel() {
   const s = useSimStatus()
   const follow = useStore((x) => x.follow)
@@ -315,6 +371,25 @@ function AircraftPanel() {
         <button onClick={() => follow({ kind: 'aircraft', id: 'xwing' })} disabled={!s.xwingActive}>Track contact</button>
       </div>
       <div className="kv"><span>Intercept</span><b>{s.patrolActive ? 'interceptor pair will pursue' : 'patrols down — no intercept'}</b></div>
+      <h4>Impounded freighter · Pad 3</h4>
+      <div className="kv"><span>Status</span><b>{FREIGHTER_LABEL[s.freighterPhase]}</b></div>
+      <div className="bar"><motion.div animate={{ scaleX: s.freighterProgress }} transition={{ duration: 0.4, ease: 'linear' }} style={{ originX: 0 }} /></div>
+      <div className="btns">
+        <button className="warn" onClick={commands.freighterEscape} disabled={s.freighterPhase !== 'impounded'}>Stage an escape</button>
+        <button onClick={() => follow({ kind: 'aircraft', id: 'freighter' })} disabled={s.freighterPhase === 'away'}>Follow</button>
+        <button onClick={() => { useStore.getState().enterInterior(null); useStore.getState().setCameraMode('orbit'); useStore.getState().select({ kind: 'aircraft', id: 'freighter' }) }}>View pad</button>
+      </div>
+      <label className="chk"><input type="checkbox" checked={s.freighterAuto} onChange={(e) => commands.setFreighterAuto(e.target.checked)} /> escapes on its own every few minutes</label>
+      <h4>Duel · Pad 2</h4>
+      <div className="kv"><span>Two duellists, blue against red</span><b>in progress</b></div>
+      <div className="btns">
+        <button onClick={() => startTour('duel')}>Watch the duel</button>
+      </div>
+      <h4>Ground forces</h4>
+      <div className="kv"><span>Heavy walker Thunder-1</span><b>perimeter patrol</b></div>
+      <div className="btns">
+        <button onClick={() => follow({ kind: 'aircraft', id: 'walker' })}>Follow walker</button>
+      </div>
       <SoundMixPanel />
       <h4>Hangar Alpha doors</h4>
       <div className="kv"><span>Doors</span><b>{Math.round(s.hangarDoor * 100)}% open</b></div>
@@ -328,7 +403,7 @@ function AircraftPanel() {
 
 const TOURS: { id: TourId; label: string }[] = [
   { id: 'flyover', label: 'Base flyover' }, { id: 'shuttle', label: 'Shuttle arrival' }, { id: 'hangar', label: 'Hangar' },
-  { id: 'command', label: 'Command chamber' }, { id: 'bunker', label: 'Server bunker' }, { id: 'agents', label: 'Agent activity' },
+  { id: 'command', label: 'Command chamber' }, { id: 'bunker', label: 'Server bunker' }, { id: 'agents', label: 'Agent activity' }, { id: 'duel', label: 'Lightsaber duel' },
 ]
 
 function FacilitiesPanel() {
@@ -338,7 +413,8 @@ function FacilitiesPanel() {
   const agents = useStore((s) => s.agents)
   const counts = useMemo(() => {
     const m: Record<string, number> = {}
-    for (const a of Object.values(agents)) if (!['disconnected', 'completed'].includes(a.status)) m[a.department] = (m[a.department] ?? 0) + 1
+    const now = Date.now() / 1000
+    for (const a of Object.values(agents)) if (isOnDuty(a, now)) m[a.department] = (m[a.department] ?? 0) + 1
     return m
   }, [agents])
   return (
@@ -348,7 +424,7 @@ function FacilitiesPanel() {
       <h4>Facilities</h4>
       {FACILITIES.map((f) => (
         <div key={f.id} className="fac">
-          <div className="fac-head"><span className="swatch" style={{ background: f.accent }} /><b>{f.name}</b>{counts[f.id] ? <span className="pill sm">{counts[f.id]} live</span> : null}</div>
+          <div className="fac-head"><span className="swatch" style={{ background: f.accent }} /><b>{f.name}</b>{counts[f.id] ? <span className="pill sm">{counts[f.id]} on duty</span> : null}</div>
           <div className="fac-desc">{f.description}</div>
           <div className="btns">
             <button onClick={() => { useStore.getState().enterInterior(null); setCameraMode('orbit'); select({ kind: 'facility', id: f.id }) }}>View</button>
@@ -392,10 +468,10 @@ function Inspector() {
   }, [a?.id, a?.last_event_at]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!selection) return null
   if (selection.kind === 'aircraft') {
-    const names: Record<string, string> = { shuttle: 'Imperial Shuttle (Lambda-inspired)', xwing: 'Unidentified starfighter (X-wing-inspired)' }
+    const names: Record<string, string> = { shuttle: 'Imperial Shuttle (Lambda-inspired)', xwing: 'Unidentified starfighter (X-wing-inspired)', freighter: 'Impounded light freighter (Falcon-inspired)', walker: 'Heavy assault walker (AT-AT-inspired)' }
     return (
       <motion.div className="inspector" {...inspIn}>
-        <div className="ins-head"><div><div className="ins-kind">SIMULATED AIRCRAFT</div><div className="ins-name">{names[selection.id] ?? `TIE-inspired fighter ${selection.id}`}</div></div><button className="icon-btn" aria-label="Close inspector" title="Close (Esc)" onClick={() => select(null)}><IconClose /></button></div>
+        <div className="ins-head"><div><div className="ins-kind">{selection.id === 'walker' ? 'SIMULATED GROUND UNIT' : 'SIMULATED AIRCRAFT'}</div><div className="ins-name">{names[selection.id] ?? `TIE-inspired fighter ${selection.id}`}</div></div><button className="icon-btn" aria-label="Close inspector" title="Close (Esc)" onClick={() => select(null)}><IconClose /></button></div>
         <div className="sim-note">Environmental simulation only. Not an AI agent, not real telemetry.</div>
         <div className="btns"><button onClick={() => follow({ kind: 'aircraft', id: selection.id })}>Follow with camera</button></div>
       </motion.div>
@@ -419,7 +495,7 @@ function Inspector() {
     <motion.div className="inspector" {...inspIn}>
       <div className="ins-head">
         <div>
-          <div className="ins-kind">● LIVE CLAUDE CODE AGENT</div>
+          <div className="ins-kind">{isOnDuty(a, Date.now() / 1000) ? '● LIVE' : '○ OFF DUTY'} {(a.client_label ?? 'Claude Code').toUpperCase()} AGENT</div>
           <div className="ins-name">{a.name}</div>
           <div className="ins-role">{a.role} · {a.kind === 'main' ? 'Main session agent' : `Subagent (${a.agent_type ?? 'type not reported'})`}</div>
         </div>
@@ -464,6 +540,7 @@ function Inspector() {
 function Feed() {
   useTick(10000)
   const feed = useStore((s) => s.feed)
+  const select = useStore((s) => s.select)
   const [filter, setFilter] = useState<'all' | 'agent' | 'sim'>('all')
   const list = feed.filter((f) => filter === 'all' || f.source === filter).slice(0, 7)
   return (
@@ -478,7 +555,7 @@ function Feed() {
       </div>
       <AnimatePresence initial={false}>
         {list.map((f) => (
-          <motion.div key={f.id} layout="position" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} transition={EASE} className={`feed-item ${f.tone} ${f.source}`}>
+          <motion.div key={f.id} layout="position" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} transition={EASE} className={`feed-item ${f.tone} ${f.source} ${f.agentId ? 'clickable' : ''}`} onClick={f.agentId ? () => select({ kind: 'agent', id: f.agentId! }) : undefined} title={f.agentId ? 'Inspect this agent' : undefined}>
             <span className="fi-src">{f.source === 'agent' ? 'AGENT' : 'SIM'}</span>
             <span className="fi-text">{f.text}</span>
             <span className="fi-t">{ago(f.ts)}</span>
@@ -500,12 +577,41 @@ function DoorPrompt() {
 }
 
 function Alert() {
-  const x = useSimStatus((s) => s.xwingActive)
+  const xwing = useSimStatus((s) => s.xwingActive)
+  const runaway = useSimStatus((s) => s.freighterPhase === 'liftoff' || s.freighterPhase === 'escape')
+  const x = xwing || runaway
   return (
     <AnimatePresence>
       {x && (
         <motion.div key="alert" role="alert" className="alert-banner" style={{ x: '-50%' }} initial={{ opacity: 0, y: -24, scaleX: 0.6 }} animate={{ opacity: [1, 0.6, 1], y: 0, scaleX: 1 }} exit={{ opacity: 0, y: -16, transition: FAST }} transition={{ ...EASE, opacity: { duration: 1.2, repeat: Infinity, ease: 'easeInOut' } }}>
-          <IconAlert size={16} className="al-ico" /> UNIDENTIFIED CONTACT — EASTERN SECTOR · <span>simulation</span>
+          <IconAlert size={16} className="al-ico" /> {xwing ? 'UNIDENTIFIED CONTACT — EASTERN SECTOR' : 'IMPOUNDED FREIGHTER ESCAPING — PAD 3'} · <span>simulation</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+/** The agents blocked on the Commander, most recent first. Click to inspect; dismiss per occurrence. */
+function AttentionBanner() {
+  useTick(5000)
+  const agents = useStore((s) => s.agents)
+  const select = useStore((s) => s.select)
+  const [dismissed, setDismissed] = useState<Record<string, number>>({})
+  const now = Date.now() / 1000
+  const list = Object.values(agents)
+    .filter((a) => needsAttention(a, now) && dismissed[a.id] !== a.last_event_at)
+    .sort((a, b) => b.last_event_at - a.last_event_at)
+  const a = list[0]
+  return (
+    <AnimatePresence>
+      {a && (
+        <motion.div key={`${a.id}:${a.last_event_at}`} role="alert" className={`attn-banner ${a.status === 'failed' ? 'failed' : ''}`} style={{ x: '-50%' }} initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10, transition: FAST }} transition={EASE}>
+          <button className="attn-main" onClick={() => { useStore.getState().setPanel('agents'); select({ kind: 'agent', id: a.id }) }}>
+            <IconAlert size={15} />
+            <span><b>{a.name}</b> {a.status === 'failed' ? 'reports a failed turn' : 'awaits your authorisation'}{a.project ? ` · ${a.project}` : ''}</span>
+            <span className="attn-sub">{a.status === 'failed' ? a.last_error ?? a.activity : a.activity} · {ago(a.last_event_at)}{list.length > 1 ? ` · +${list.length - 1} more` : ''}</span>
+          </button>
+          <button className="icon-btn" aria-label="Dismiss" title="Dismiss" onClick={() => setDismissed((d) => ({ ...d, [a.id]: a.last_event_at }))}><IconClose /></button>
         </motion.div>
       )}
     </AnimatePresence>
@@ -585,6 +691,7 @@ export function HUD() {
       {hudVisible && <InspectorPresence />}
       <DoorPrompt />
       <Alert />
+      <AttentionBanner />
       {hudVisible && <Help />}
     </MotionConfig>
   )

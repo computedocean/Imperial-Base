@@ -4,7 +4,7 @@ import type { DepartmentId } from '../world/layout'
 
 export type Quality = 'low' | 'medium' | 'high' | 'cinematic'
 export type CameraMode = 'orbit' | 'tactical' | 'firstperson' | 'thirdperson' | 'cinematic' | 'follow'
-export type TourId = 'flyover' | 'shuttle' | 'hangar' | 'command' | 'bunker' | 'agents'
+export type TourId = 'flyover' | 'shuttle' | 'hangar' | 'command' | 'bunker' | 'agents' | 'duel'
 /** Lighting scenario. Independent of the quality preset. `N` cycles it. */
 export type TimeOfDay = 'golden' | 'dusk' | 'night'
 export const TIMES_OF_DAY: TimeOfDay[] = ['golden', 'dusk', 'night']
@@ -42,7 +42,11 @@ export type Selection =
   | { kind: 'facility'; id: DepartmentId }
   | null
 
-export interface FeedItem { id: string; ts: number; text: string; tone: 'info' | 'warn' | 'alert' | 'ok' | 'sim'; source: 'agent' | 'sim' }
+export interface FeedItem { id: string; ts: number; text: string; tone: 'info' | 'warn' | 'alert' | 'ok' | 'sim'; source: 'agent' | 'sim'; agentId?: string }
+export type RosterFilter = 'live' | 'working' | 'waiting' | 'attention' | 'failed' | 'all'
+export interface LiveUpdate { event: HookEvent; agents: AgentInfo[]; tasks: TaskInfo[] }
+/** Events older than this are history being caught up, not news for the feed. */
+const FEED_MAX_AGE_S = 120
 
 interface State {
   quality: Quality
@@ -61,6 +65,8 @@ interface State {
   panel: 'agents' | 'missions' | 'events' | 'aircraft' | 'facilities' | null
   showLabels: boolean
   hudVisible: boolean
+  rosterFilter: RosterFilter
+  setRosterFilter(f: RosterFilter): void
   timeOfDay: TimeOfDay
   setTimeOfDay(t: TimeOfDay): void
   cycleTimeOfDay(): void
@@ -73,9 +79,11 @@ interface State {
   setPanel(p: State['panel']): void
   toggleLabels(): void
   toggleHud(): void
-  pushFeed(text: string, tone?: FeedItem['tone'], source?: FeedItem['source']): void
+  pushFeed(text: string, tone?: FeedItem['tone'], source?: FeedItem['source'], agentId?: string): void
   applySnapshot(s: { agents: AgentInfo[]; tasks: TaskInfo[]; events: HookEvent[]; ingest?: IngestStatus }): void
   applyEvent(ev: HookEvent, agents: AgentInfo[], tasks: TaskInfo[]): void
+  /** Apply several live updates in a single store update (one React render however many arrived). */
+  applyEvents(batch: LiveUpdate[]): void
   setSystem(s: SystemInfo): void
   setConnected(c: boolean): void
 }
@@ -115,6 +123,8 @@ export const useStore = create<State>((set, get) => ({
   panel: 'agents',
   showLabels: true,
   hudVisible: true,
+  rosterFilter: 'live',
+  setRosterFilter(f) { set({ rosterFilter: f }) },
   timeOfDay: loadTimeOfDay(),
   setTimeOfDay(t) {
     try { localStorage.setItem('imperial.tod', t) } catch { /* ignore */ }
@@ -136,8 +146,8 @@ export const useStore = create<State>((set, get) => ({
   setPanel(p) { set({ panel: p }) },
   toggleLabels() { set({ showLabels: !get().showLabels }) },
   toggleHud() { set({ hudVisible: !get().hudVisible }) },
-  pushFeed(text, tone = 'info', source = 'sim') {
-    const item: FeedItem = { id: `f${++feedSeq}`, ts: Date.now() / 1000, text, tone, source }
+  pushFeed(text, tone = 'info', source = 'sim', agentId) {
+    const item: FeedItem = { id: `f${++feedSeq}`, ts: Date.now() / 1000, text, tone, source, agentId }
     set({ feed: [item, ...get().feed].slice(0, 120) })
   },
   applySnapshot(s) {
@@ -147,14 +157,23 @@ export const useStore = create<State>((set, get) => ({
     for (const t of s.tasks) tasks[t.id] = t
     set({ agents, tasks, events: s.events.slice(-300), ingest: s.ingest ?? get().ingest })
   },
-  applyEvent(ev, agents, tasks) {
+  applyEvent(ev, agents, tasks) { get().applyEvents([{ event: ev, agents, tasks }]) },
+  applyEvents(batch) {
+    if (!batch.length) return
     const a = { ...get().agents }
-    for (const x of agents) a[x.id] = x
     const t = { ...get().tasks }
-    for (const x of tasks) t[x.id] = x
-    set({ agents: a, tasks: t, events: [...get().events, ev].slice(-300) })
-    const line = describeEvent(ev, a)
-    if (line) get().pushFeed(line.text, line.tone, 'agent')
+    const news: FeedItem[] = []
+    const now = Date.now() / 1000
+    for (const u of batch) {
+      for (const x of u.agents) a[x.id] = x
+      for (const x of u.tasks) t[x.id] = x
+      const ts = Date.parse(u.event.ts) / 1000
+      if (Number.isFinite(ts) && now - ts > FEED_MAX_AGE_S) continue // backlog: state only, no feed line
+      const line = describeEvent(u.event, a)
+      if (line) news.unshift({ id: `f${++feedSeq}`, ts: Number.isFinite(ts) ? Math.min(ts, now) : now, text: line.text, tone: line.tone, source: 'agent', agentId: agentKeyFor(u.event) })
+    }
+    const events = get().events.concat(batch.map((u) => u.event)).slice(-300)
+    set({ agents: a, tasks: t, events, feed: news.length ? [...news, ...get().feed].slice(0, 120) : get().feed })
   },
   setSystem(s) { set({ system: s }) },
   setConnected(c) { set({ connected: c }) },
@@ -179,6 +198,7 @@ export function describeEvent(ev: HookEvent, agents: Record<string, AgentInfo>):
     case 'SubagentStop': return { text: `${who} mission complete`, tone: 'ok' }
     case 'Stop': return { text: `${who} completed a turn`, tone: 'ok' }
     case 'StopFailure': return { text: `${who} FAILED: ${ev.error ?? ''}`, tone: 'alert' }
+    case 'PermissionRequest': return { text: `${who} awaits your authorisation${ev.tool_name ? ` — ${ev.tool_name}` : ''}`, tone: 'warn' }
     case 'Notification':
       return ev.notification_type?.includes('permission') ? { text: `${who} awaits your authorisation`, tone: 'warn' } : null
     default: return null
