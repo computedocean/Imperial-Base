@@ -407,8 +407,13 @@ function AircraftPanel() {
         <button onClick={() => watch('gunship')} disabled={s.gunshipPhase === 'away'}>Follow gunship</button>
         <button onClick={() => watch('barge')}>Follow sail barge</button>
       </div>
+      <h4>March on the Temple</h4>
+      <div className="kv"><span>Hooded knight and 36 clone troopers</span><b>{s.marching ? 'on the march' : 'standing by'}</b></div>
+      <div className="btns">
+        <button className="warn" onClick={() => { if (!s.marching) commands.marchStart(); useStore.getState().watchTour('march') }}>{s.marching ? 'Watch the march' : 'Start the march'}</button>
+      </div>
       <h4>Duel · Pad 2</h4>
-      <div className="kv"><span>Master against apprentice</span><b>in progress</b></div>
+      <div className="kv"><span>Master against a horned Sith, double blade</span><b>in progress</b></div>
       <div className="btns">
         <button onClick={() => useStore.getState().watchTour('duel')}>Watch the duel</button>
       </div>
@@ -430,7 +435,7 @@ function AircraftPanel() {
 
 const TOURS: { id: TourId; label: string }[] = [
   { id: 'flyover', label: 'Base flyover' }, { id: 'shuttle', label: 'Shuttle arrival' }, { id: 'hangar', label: 'Hangar' },
-  { id: 'command', label: 'Command chamber' }, { id: 'bunker', label: 'Server bunker' }, { id: 'agents', label: 'Agent activity' }, { id: 'duel', label: 'Lightsaber duel' }, { id: 'destroyer', label: 'Star Destroyer' },
+  { id: 'command', label: 'Command chamber' }, { id: 'bunker', label: 'Server bunker' }, { id: 'agents', label: 'Agent activity' }, { id: 'duel', label: 'Lightsaber duel' }, { id: 'destroyer', label: 'Star Destroyer' }, { id: 'march', label: 'March on the Temple' },
 ]
 
 function FacilitiesPanel() {

@@ -193,15 +193,15 @@ function pose(d: Duellist, who: 0 | 1, tau: number, cx: number, cz: number, gap:
   const m = _mix
   m.hf = m.hl = m.hy = m.df = m.dl = m.du = 0
   if (who === 0) add(m, wGuard, 0.32, 0.0, 1.24, 0.26, 0.05, 1) // master: blade upright before him
-  else add(m, wGuard, 0.3, -0.2, 0.98, 0.95, 0.12, 0.34) // apprentice: low, point forward
+  else add(m, wGuard, 0.4, 0, 1.12, 0.12, 1, 0.16) // challenger: staff held level across the body
   if (wFight > 0) {
     // mirrored figure-eights: each blade passes the centre line exactly when the other does
     const sweep = Math.sin(stroke * Math.PI) * (1.05 + 0.25 * d.press)
     const overhead = who === 1 ? Math.sin(Math.PI * clamp01((tau - LEAP_AT) / 0.75)) : 0
     const raise = 0.95 + 0.42 * Math.cos(stroke * Math.PI * 2) + 0.25 * d.press + 0.5 * overhead
     add(m, wFight,
-      0.42 + 0.1 * d.press, Math.sin(sweep) * 0.3, DUEL.handY + 0.14 * Math.cos(stroke * Math.PI * 2) + 0.35 * overhead,
-      Math.cos(sweep) * Math.cos(raise) + 0.4, Math.sin(sweep), Math.cos(sweep) * Math.sin(raise))
+      (who === 1 ? 0.56 : 0.42) + 0.1 * d.press, Math.sin(sweep) * 0.3, DUEL.handY + 0.14 * Math.cos(stroke * Math.PI * 2) + 0.35 * overhead,
+      Math.cos(sweep) * Math.cos(raise) + (who === 1 ? 0.15 : 0.4), Math.sin(sweep), Math.cos(sweep) * Math.sin(raise))
   }
   if (wLock > 0) {
     // blades crossed high between them, both leaning in; the whole bind shudders

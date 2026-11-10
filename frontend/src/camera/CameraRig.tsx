@@ -9,6 +9,7 @@ import { agentObjects } from '../agents/AgentLayer'
 import { actorSystem } from '../agents/actors'
 import { INTERIORS } from '../interiors/layouts'
 import { createDuelState, duelAt } from '../personnel/duelMoves'
+import { MARCH, toWorld } from '../personnel/marchPlan'
 import { HeroCharacter } from '../personnel/HeroCharacter'
 import { sim } from '../sim/world'
 import { useStore, type TourId } from '../state/store'
@@ -317,6 +318,20 @@ function tourShots(id: TourId): Shot[] {
         { from: [V(x - 38, y + 6, z + 24), V(x - 10, y + 4, z + 10), V(x + 24, y + 5, z - 20)], look: [V(x, y + 2, z - 10), V(x - 10, y + 1, z - 20), V(x + 26, y + 2, z + 10)], dur: 22, interior: 'bunker' },
       ]
     }
+    case 'march':
+      return [{
+        from: [], look: [], dur: 9999, interior: null,
+        // three set-ups, as in the film: low in front of the column as it comes on, then from behind
+        // and above with the temple filling the frame, then at the steps as they go in
+        dynamic: () => {
+          const t = Math.max(0, sim.march.elapsed(sim.time))
+          const head = MARCH.startZ - MARCH.speed * t
+          const L = (x: number, y: number, z: number) => { const [wx, wz] = toWorld(x, z); return V(wx, y, wz) }
+          if (head > 58) return { pos: L(3.5, 0.9, head - 13), look: L(0, 1.5, head + 4) }
+          if (head > 24) return { pos: L(-9, 11, head + 42), look: L(0, 7, head - 20) }
+          return { pos: L(15, 2.2, 20), look: L(0, 1.6, Math.max(head, 3) + 4) }
+        },
+      }]
     case 'destroyer':
       return [{
         from: [], look: [], dur: 9999, interior: null,
@@ -381,6 +396,7 @@ function Cinematic() {
     }
     if (s.dynamic) {
       const r = s.dynamic(t.current)
+      if (camera.position.distanceTo(r.pos) > 30) cut.current = true // the tour changed set-up: cut, don't fly
       if (cut.current) {
         // starting a tour is a cut: go straight to the subject instead of drifting there through the buildings
         cut.current = false

@@ -6,6 +6,7 @@ import { FUEL_DUMP, PatrolSim, ShuttleSim, XWingSim, type FlightState, type Shut
 import { DESTROYER, DestroyerSim, type DestroyerPhase } from '../aircraft/destroyer'
 import { FreighterSim, type FreighterPhase } from '../aircraft/freighter'
 import { GunshipSim, type LanderPhase } from '../aircraft/visitors'
+import { MarchSim } from '../personnel/marchPlan'
 import { useStore } from '../state/store'
 
 export const sim = {
@@ -16,6 +17,7 @@ export const sim = {
   freighter: new FreighterSim(),
   gunship: new GunshipSim(),
   destroyer: new DestroyerSim(),
+  march: new MarchSim(),
   hangarDoor: 0, // 0 closed .. 1 open
   hangarMode: 'auto' as 'auto' | 'open' | 'closed',
 }
@@ -34,13 +36,14 @@ export interface SimStatus {
   freighterAuto: boolean
   gunshipPhase: LanderPhase
   destroyerPhase: DestroyerPhase
+  marching: boolean
   hangarDoor: number
   hangarMode: 'auto' | 'open' | 'closed'
 }
 
 export const useSimStatus = create<SimStatus>(() => ({
   shuttlePhase: 'away', shuttleProgress: 0, shuttleAuto: true, patrolActive: false, fighters: [], xwingActive: false, dumpBurning: false,
-  freighterPhase: 'impounded', freighterProgress: 0, freighterAuto: true, gunshipPhase: 'away', destroyerPhase: 'away',
+  freighterPhase: 'impounded', freighterProgress: 0, freighterAuto: true, gunshipPhase: 'away', destroyerPhase: 'away', marching: false,
   hangarDoor: 0, hangarMode: 'auto',
 }))
 
@@ -77,6 +80,9 @@ export const commands = {
     if (d.phase === 'away') d.t0 = sim.time - DESTROYER.timing.away + 2.5
     else if (d.phase === 'station') { d.t0 = sim.time - DESTROYER.timing.station; feed('[SIM] Star Destroyer ordered to jump — it will return shortly') }
   },
+  marchStart() {
+    if (!sim.march.start(sim.time)) feed('[SIM] The column is already on the march', 'warn')
+  },
   freighterEscape() {
     if (!sim.freighter.escape(sim.time)) feed('[SIM] Freighter escape unavailable: the freighter is not on Pad 3', 'warn')
   },
@@ -97,6 +103,7 @@ export function stepSim(dt: number) {
   sim.freighter.update(sim.time)
   sim.gunship.update(sim.time)
   sim.destroyer.update(sim.time)
+  sim.march.update(sim.time)
   // hangar doors: open while fighters transit the hangar (auto), or on command
   let want = 0
   if (sim.hangarMode === 'open') want = 1
@@ -113,6 +120,8 @@ let lastPhase: ShuttlePhase = 'away'
 let lastFreighter: FreighterPhase = 'impounded'
 let lastKills = 0
 let lastGunship: LanderPhase = 'away'
+let lastMarch = 0
+let marchOn = false
 let lastDestroyer: DestroyerPhase = 'away'
 let lastStrikes = 0
 let dumpDown = false
@@ -156,6 +165,15 @@ export function publishSim(dt: number) {
     if (m) feed(m[0], m[1])
     lastFreighter = fp
   }
+  if (sim.march.count !== lastMarch) {
+    lastMarch = sim.march.count
+    marchOn = true
+    feed('[SIM] A hooded knight is leading a clone trooper column up the approach to the Temple', 'warn')
+  }
+  if (marchOn && sim.march.t0 === null) {
+    marchOn = false
+    feed('[SIM] The column has entered the Temple — the great doors are sealed')
+  }
   const gp = sim.gunship.phase
   if (gp !== lastGunship) {
     const msg: Partial<Record<LanderPhase, string>> = {
@@ -193,6 +211,7 @@ export function publishSim(dt: number) {
     freighterAuto: sim.freighter.autoCycle,
     gunshipPhase: gp,
     destroyerPhase: dp,
+    marching: sim.march.t0 !== null,
     hangarDoor: sim.hangarDoor,
     hangarMode: sim.hangarMode,
   })

@@ -128,6 +128,15 @@ New scenery (all simulated, all original geometry):
   northern range as a streak of light with a flash, holds station for 150 s, then jumps away and returns later.
   Air Control: *Watch it arrive* / *Order jump*; cinematic tour *Star Destroyer*.
 
+* ✅ **The Temple** (`world/Temple.tsx`, `TEMPLE` in `layout.ts`): a stone ziggurat with a central spire and four
+  corner spires in the north-west corner of the base, pillared entrance and steps on its east face. It is an
+  obstacle for flight-path tests.
+* ✅ **March on the Temple** (`personnel/March.tsx`, `personnel/marchPlan.ts`): a hooded knight leads 36 clone
+  troopers in step up the approach and in through the door, igniting his blade at the steps. Runs every five
+  minutes or from Air Control (*Start the march*), with a three-shot camera tour.
+* ✅ **Duel recast**: the master now fights a horned, red-faced challenger with a red double-bladed staff. The
+  round is unchanged (face-off, exchanges, lock, spin, leap, disarm).
+
 Not verified on 2026-11-10: real-GPU frame rate with the new scenery (the preview pane was throttled while
 testing), the new sounds by ear, and `start.cmd` end to end (its stale-build check was run on its own).
 

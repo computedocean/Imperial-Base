@@ -1,6 +1,6 @@
 /**
- * Lightsaber duel on Secondary Pad 2: a tan-robed master against his dark-robed apprentice, both
- * with blue blades, staged as a sparring match (face-off, exchanges, blade lock, spin, leap, disarm). Original figures built from primitives; the choreography lives in duelMoves.ts.
+ * Lightsaber duel on Secondary Pad 2: a tan-robed master with a blue blade against a horned,
+ * red-faced challenger with a red double-bladed staff, staged as a sparring match (face-off, exchanges, blade lock, spin, leap, disarm). Original figures built from primitives; the choreography lives in duelMoves.ts.
  * Simulated scenery — not AI agents, not real telemetry.
  */
 import { Billboard, Text } from '@react-three/drei'
@@ -15,9 +15,9 @@ import { Footwork, LEG, kneeOf } from './footwork'
 /** Latest duel state, shared with the camera (cinematic tour) and QA. */
 export const duelLive = createDuelState()
 
-interface Look { braid: boolean; robe: string; tunic: string; skin: string; hair: string; blade: string; hood: boolean; legs: string; boots: string; eyes: string; beard: boolean }
-const MASTER: Look = { robe: '#b9a27c', tunic: '#e3d6b8', skin: '#d9a982', hair: '#a8733c', blade: '#3d8bff', hood: false, legs: '#8f7c5c', boots: '#4a3524', eyes: '#3f6fa8', beard: true, braid: false }
-const APPRENTICE: Look = { robe: '#1b1613', tunic: '#2e2019', skin: '#d6a57f', hair: '#6b4426', blade: '#4d9bff', hood: false, legs: '#15110e', boots: '#0b0908', eyes: '#3f6fa8', beard: false, braid: true }
+interface Look { horned: boolean; double: boolean; braid: boolean; robe: string; tunic: string; skin: string; hair: string; blade: string; hood: boolean; legs: string; boots: string; eyes: string; beard: boolean }
+const MASTER: Look = { robe: '#b9a27c', tunic: '#e3d6b8', skin: '#d9a982', hair: '#a8733c', blade: '#3d8bff', hood: false, legs: '#8f7c5c', boots: '#4a3524', eyes: '#3f6fa8', beard: true, braid: false, horned: false, double: false }
+const SITH: Look = { robe: '#0c0b0b', tunic: '#171212', skin: '#b01f18', hair: '#0a0909', blade: '#ff2a1a', hood: false, legs: '#0c0b0b', boots: '#060505', eyes: '#f0c020', beard: false, braid: false, horned: true, double: true }
 
 const Y = new THREE.Vector3(0, 1, 0)
 const _v = new THREE.Vector3()
@@ -51,10 +51,11 @@ interface FigureRefs {
   armL: THREE.Mesh | null; armR: THREE.Mesh | null
   hilt: THREE.Mesh | null; core: THREE.Mesh | null; halo: THREE.Mesh | null
   pool: THREE.Mesh | null
+  core2: THREE.Mesh | null; halo2: THREE.Mesh | null; double: boolean
   thigh: (THREE.Mesh | null)[]; shin: (THREE.Mesh | null)[]; boot: (THREE.Group | null)[]
   feet: Footwork
 }
-const emptyRefs = (): FigureRefs => ({ root: null, body: null, armL: null, armR: null, hilt: null, core: null, halo: null, pool: null, thigh: [null, null], shin: [null, null], boot: [null, null], feet: new Footwork() })
+const emptyRefs = (double = false): FigureRefs => ({ core2: null, halo2: null, double, root: null, body: null, armL: null, armR: null, hilt: null, core: null, halo: null, pool: null, thigh: [null, null], shin: [null, null], boot: [null, null], feet: new Footwork() })
 
 function Figure({ look, refs, glow }: { look: Look; refs: FigureRefs; glow: THREE.Texture }) {
   const m = useMemo(() => ({
@@ -67,7 +68,7 @@ function Figure({ look, refs, glow }: { look: Look; refs: FigureRefs; glow: THRE
     legs: new THREE.MeshStandardMaterial({ color: look.legs, roughness: 0.9, metalness: 0 }),
     boots: new THREE.MeshStandardMaterial({ color: look.boots, roughness: 0.6, metalness: 0.05 }),
     white: new THREE.MeshStandardMaterial({ color: '#f1ede4', roughness: 0.4, metalness: 0 }),
-    iris: new THREE.MeshStandardMaterial({ color: look.eyes, roughness: 0.3, metalness: 0, emissive: look.eyes, emissiveIntensity: look.hood ? 0.9 : 0.15 }),
+    iris: new THREE.MeshStandardMaterial({ color: look.eyes, roughness: 0.3, metalness: 0, emissive: look.eyes, emissiveIntensity: look.horned ? 1.1 : 0.15 }),
     dark: new THREE.MeshStandardMaterial({ color: '#1a1210', roughness: 0.8, metalness: 0 }),
     lip: new THREE.MeshStandardMaterial({ color: '#8f5a4a', roughness: 0.7, metalness: 0 }),
     core: new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }),
@@ -97,7 +98,7 @@ function Figure({ look, refs, glow }: { look: Look; refs: FigureRefs; glow: THRE
               <mesh scale={[1.25, 0.8, 0.5]} material={m.white}><sphereGeometry args={[0.016, 10, 8]} /></mesh>
               <mesh position={[0, 0, 0.006]} scale={[1, 1, 0.5]} material={m.iris}><sphereGeometry args={[0.0095, 8, 6]} /></mesh>
               <mesh position={[0, 0, 0.0095]} scale={[1, 1, 0.5]} material={m.dark}><sphereGeometry args={[0.0048, 6, 5]} /></mesh>
-              <mesh position={[0, 0.021, 0.002]} rotation={[0, 0, sx * (look.hood ? 0.32 : 0.1)]} material={m.hair}><boxGeometry args={[0.04, 0.008, 0.012]} /></mesh>
+              <mesh position={[0, 0.021, 0.002]} rotation={[0, 0, sx * (look.horned ? 0.34 : 0.1)]} material={m.hair}><boxGeometry args={[0.04, 0.008, 0.012]} /></mesh>
             </group>
           ))}
           <mesh position={[0, 1.655, 0.118]} rotation={[-0.25, 0, 0]} material={m.skin}><boxGeometry args={[0.022, 0.045, 0.028]} /></mesh>
@@ -109,7 +110,20 @@ function Figure({ look, refs, glow }: { look: Look; refs: FigureRefs; glow: THRE
               <mesh position={[0, 1.675, -0.02]} scale={[1.22, 1.3, 1.3]} material={m.hood} castShadow><sphereGeometry args={[0.13, 16, 12, Math.PI / 2 + 0.95, Math.PI * 2 - 1.9, 0, Math.PI * 0.8]} /></mesh>
               <mesh position={[0, 1.46, -0.1]} scale={[1.2, 0.7, 0.9]} material={m.robe}><sphereGeometry args={[0.13, 10, 8]} /></mesh>
             </>
-            : <>
+            : look.horned ? <>
+              {/* bald, a crown of short horns, black markings across the red face */}
+              {[0, 1, 2, 3, 4, 5, 6].map((i) => {
+                const a = (i / 7) * Math.PI * 2 + 0.2
+                return <mesh key={i} position={[Math.sin(a) * 0.075, 1.775, Math.cos(a) * 0.075 - 0.01]} rotation={[Math.cos(a) * 0.4, 0, -Math.sin(a) * 0.4]} material={m.white}><coneGeometry args={[0.014, 0.05, 6]} /></mesh>
+              })}
+              <mesh position={[0, 1.79, 0]} material={m.white}><coneGeometry args={[0.014, 0.05, 6]} /></mesh>
+              <mesh position={[0, 1.735, 0.092]} material={m.dark}><boxGeometry args={[0.03, 0.06, 0.012]} /></mesh>
+              {[1, -1].map((sx) => <group key={sx}>
+                <mesh position={[sx * 0.05, 1.725, 0.085]} rotation={[0, 0, sx * 0.5]} material={m.dark}><boxGeometry args={[0.014, 0.07, 0.012]} /></mesh>
+                <mesh position={[sx * 0.062, 1.64, 0.088]} rotation={[0, sx * 0.4, sx * -0.3]} material={m.dark}><boxGeometry args={[0.016, 0.07, 0.012]} /></mesh>
+                <mesh position={[sx * 0.028, 1.6, 0.098]} material={m.dark}><boxGeometry args={[0.012, 0.035, 0.012]} /></mesh>
+              </group>)}
+            </> : <>
               <mesh position={[0, 1.705, -0.02]} scale={[0.98, 0.9, 1.04]} material={m.hair}><sphereGeometry args={[0.118, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55]} /></mesh>
               <mesh position={[0, 1.66, -0.07]} scale={[0.95, 1, 0.7]} material={m.hair}><sphereGeometry args={[0.1, 10, 8]} /></mesh>
             </>}
@@ -137,6 +151,10 @@ function Figure({ look, refs, glow }: { look: Look; refs: FigureRefs; glow: THRE
       <mesh ref={(o) => { refs.hilt = o }} material={m.hilt}><cylinderGeometry args={[0.022, 0.022, 1, 8]} /></mesh>
       <mesh ref={(o) => { refs.core = o }} material={m.core}><cylinderGeometry args={[0.018, 0.02, 1, 8]} /></mesh>
       <mesh ref={(o) => { refs.halo = o }} material={m.halo}><cylinderGeometry args={[0.055, 0.06, 1, 10]} /></mesh>
+      {look.double && <>
+        <mesh ref={(o) => { refs.core2 = o }} material={m.core}><cylinderGeometry args={[0.02, 0.018, 1, 8]} /></mesh>
+        <mesh ref={(o) => { refs.halo2 = o }} material={m.halo}><cylinderGeometry args={[0.06, 0.055, 1, 10]} /></mesh>
+      </>}
       <mesh ref={(o) => { refs.pool = o }} material={m.pool} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[1, 1]} /></mesh>
     </>
   )
@@ -187,12 +205,22 @@ function poseFigure(r: FigureRefs, d: Duellist, flicker: number) {
     between(mesh, _sh, d.hand)
   }
   // the weapon: in the hands, or wherever it has been knocked to
-  _a.copy(d.saber).addScaledVector(d.bladeDir, -0.13)
-  _b.copy(d.saber).addScaledVector(d.bladeDir, 0.13)
+  const hl = r.double ? 0.26 : 0.13 // a double-bladed staff has a long hilt
+  _a.copy(d.saber).addScaledVector(d.bladeDir, -hl)
+  _b.copy(d.saber).addScaledVector(d.bladeDir, hl)
   if (r.hilt) between(r.hilt, _a, _b)
   const lit = d.bladeLen > 0.02
-  _a.copy(d.saber).addScaledVector(d.bladeDir, 0.13)
-  _b.copy(d.saber).addScaledVector(d.bladeDir, 0.13 + DUEL.blade * Math.max(d.bladeLen, 0.02))
+  if (r.core2 && r.halo2) {
+    // the second blade runs the other way; it is cut short where it would meet the deck
+    let len = 0.95 * Math.max(d.bladeLen, 0.02)
+    if (d.bladeDir.y > 0.05) len = Math.max(0.05, Math.min(len, (d.saber.y - d.pos.y - 0.06) / d.bladeDir.y - hl))
+    _a.copy(d.saber).addScaledVector(d.bladeDir, -hl)
+    _b.copy(d.saber).addScaledVector(d.bladeDir, -hl - len)
+    r.core2.visible = lit; between(r.core2, _b, _a)
+    r.halo2.visible = lit; between(r.halo2, _b, _a, 0.92 - flicker * 0.16)
+  }
+  _a.copy(d.saber).addScaledVector(d.bladeDir, hl)
+  _b.copy(d.saber).addScaledVector(d.bladeDir, hl + DUEL.blade * Math.max(d.bladeLen, 0.02))
   if (r.core) { r.core.visible = lit; between(r.core, _a, _b) }
   if (r.halo) { r.halo.visible = lit; between(r.halo, _a, _b, 0.92 + flicker * 0.16) }
   if (r.pool) {
@@ -206,8 +234,8 @@ function poseFigure(r: FigureRefs, d: Duellist, flicker: number) {
 
 export function Duel({ visible = true }: { visible?: boolean }) {
   const glow = useMemo(glowTexture, [])
-  const A = useMemo(emptyRefs, [])
-  const B = useMemo(emptyRefs, [])
+  const A = useMemo(() => emptyRefs(), [])
+  const B = useMemo(() => emptyRefs(true), [])
   const spark = useRef<THREE.Sprite>(null)
   const sparkMat = useMemo(() => new THREE.SpriteMaterial({ map: glow, color: '#fff6d8', toneMapped: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), [glow])
   const showLabels = useStore((s) => s.showLabels)
@@ -240,7 +268,7 @@ export function Duel({ visible = true }: { visible?: boolean }) {
   return (
     <group name="duel" visible={visible}>
       <Figure look={MASTER} refs={A} glow={glow} />
-      <Figure look={APPRENTICE} refs={B} glow={glow} />
+      <Figure look={SITH} refs={B} glow={glow} />
       <sprite ref={spark} material={sparkMat} />
       {showLabels && !interior && (
         <Billboard position={[DUEL_PAD.x, DUEL_PAD.y + 16, DUEL_PAD.z]}>

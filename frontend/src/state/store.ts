@@ -4,7 +4,7 @@ import type { DepartmentId } from '../world/layout'
 
 export type Quality = 'low' | 'medium' | 'high' | 'cinematic'
 export type CameraMode = 'orbit' | 'tactical' | 'firstperson' | 'thirdperson' | 'cinematic' | 'follow'
-export type TourId = 'flyover' | 'shuttle' | 'hangar' | 'command' | 'bunker' | 'agents' | 'duel' | 'destroyer'
+export type TourId = 'flyover' | 'shuttle' | 'hangar' | 'command' | 'bunker' | 'agents' | 'duel' | 'destroyer' | 'march'
 /** Lighting scenario. Independent of the quality preset. `N` cycles it. */
 export type TimeOfDay = 'golden' | 'dusk' | 'night'
 export const TIMES_OF_DAY: TimeOfDay[] = ['golden', 'dusk', 'night']

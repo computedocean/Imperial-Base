@@ -134,6 +134,9 @@ export const PADS: Pad[] = [
   { id: 'pad3', name: 'Secondary Pad 3', x: -135, z: 160, y: 0.4, radius: 18 },
 ]
 
+/** The Temple in the north-west corner: a square building whose door is in the middle of its east face. */
+export const TEMPLE = { x: -255, z: -240, size: 92, height: 96, door: [-209, -240] as [number, number] }
+
 /** Hangar door opening (east face of the hangar). */
 export const HANGAR_DOOR = { x: -205, z: 20, width: 120, height: 38 }
 
@@ -234,5 +237,9 @@ export function obstacleBoxes(): { min: [number, number, number]; max: [number, 
   }))
   // command spire is taller than its podium footprint suggests
   boxes.push({ id: 'command-spire', min: [-22, 0, -22], max: [22, 160, 22] })
+  boxes.push({
+    id: 'temple', min: [TEMPLE.x - TEMPLE.size / 2, 0, TEMPLE.z - TEMPLE.size / 2],
+    max: [TEMPLE.x + TEMPLE.size / 2, TEMPLE.height, TEMPLE.z + TEMPLE.size / 2],
+  })
   return boxes
 }
