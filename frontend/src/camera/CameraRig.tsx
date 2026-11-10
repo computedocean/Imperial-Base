@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { aircraftObjects } from '../aircraft/AircraftLayer'
+import { FUEL_DUMP } from '../aircraft/flight'
 import { agentObjects } from '../agents/AgentLayer'
 import { actorSystem } from '../agents/actors'
 import { INTERIORS } from '../interiors/layouts'
@@ -408,6 +409,12 @@ function Orbit() {
       const p = sim.freighter.state.pos
       c.target.set(p.x, p.y, p.z)
       camera.position.set(p.x + 46, p.y + 20, p.z + 44)
+      c.update()
+      return
+    }
+    if (c && !interior && selection?.kind === 'aircraft' && selection.id === 'dump') {
+      c.target.set(FUEL_DUMP.x, 6, FUEL_DUMP.z)
+      camera.position.set(FUEL_DUMP.x + 95, 42, FUEL_DUMP.z + 80)
       c.update()
       return
     }

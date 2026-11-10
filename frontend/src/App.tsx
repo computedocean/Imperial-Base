@@ -20,8 +20,10 @@ export default function App() {
     // the base is alive on arrival: patrols airborne, a shuttle on approach shortly after load
     commands.startPatrol(true)
     const t = window.setTimeout(() => commands.shuttleArrive(), 4000)
-    const x = window.setTimeout(() => commands.xwingFlyby(), 75000)
-    return () => { window.clearTimeout(t); window.clearTimeout(x) }
+    // the intruder attacks a minute in, then returns every few minutes
+    const x = window.setTimeout(() => commands.xwingFlyby(), 60000)
+    const again = window.setInterval(() => commands.xwingFlyby(), 240000)
+    return () => { window.clearTimeout(t); window.clearTimeout(x); window.clearInterval(again) }
   }, [])
   return (
     <div className="app">

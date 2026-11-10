@@ -13,6 +13,7 @@ import { publishSim, sim, stepSim } from './sim/world'
 import { QUALITY, useStore } from './state/store'
 import { Sky } from './world/Sky'
 import { Apron } from './world/Apron'
+import { FuelDump } from './world/FuelDump'
 import { WorldRendering } from './world/Rendering'
 import { Structures } from './world/Structures'
 import { BeaconBlink, Dust, Roads, Rocks, Settlements } from './world/Surroundings'
@@ -32,7 +33,9 @@ function Stats() {
     last.current = { calls: gl.info.render.calls, triangles: gl.info.render.triangles } // totals of the previous frame
     gl.info.reset()
   }, -1000)
-  useFrame(({ gl }, dt) => {
+  useFrame(({ gl, scene, camera }, dt) => {
+    const w = window as any
+    if (w.__imperial && w.__imperial.scene !== scene) { w.__imperial.scene = scene; w.__imperial.camera = camera } // QA handle
     const a = acc.current
     a.t += dt
     a.frames++
@@ -92,6 +95,7 @@ export function Scene() {
       </group>
       <VehicleLayer visible={!sealed} />
       <Walker visible={!sealed} />
+      <FuelDump visible={!sealed} />
       <Duel visible={!sealed} />
       <Structures hidden={interior} />
       <Suspense fallback={null}>

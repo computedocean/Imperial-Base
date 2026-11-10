@@ -2,7 +2,7 @@
 // frame by <SimDriver/>; UI reads a coarse snapshot (4 Hz) from useSimStatus.
 // NOTE: everything here is simulated scenery — it never represents real-world activity.
 import { create } from 'zustand'
-import { PatrolSim, ShuttleSim, XWingSim, type FlightState, type ShuttlePhase } from '../aircraft/flight'
+import { FUEL_DUMP, PatrolSim, ShuttleSim, XWingSim, type FlightState, type ShuttlePhase } from '../aircraft/flight'
 import { FreighterSim, type FreighterPhase } from '../aircraft/freighter'
 import { useStore } from '../state/store'
 
@@ -23,6 +23,8 @@ export interface SimStatus {
   patrolActive: boolean
   fighters: { id: string; callsign: string; state: FlightState }[]
   xwingActive: boolean
+  /** the fuel dump is a burning wreck right now */
+  dumpBurning: boolean
   freighterPhase: FreighterPhase
   freighterProgress: number
   freighterAuto: boolean
@@ -31,7 +33,7 @@ export interface SimStatus {
 }
 
 export const useSimStatus = create<SimStatus>(() => ({
-  shuttlePhase: 'away', shuttleProgress: 0, shuttleAuto: true, patrolActive: false, fighters: [], xwingActive: false,
+  shuttlePhase: 'away', shuttleProgress: 0, shuttleAuto: true, patrolActive: false, fighters: [], xwingActive: false, dumpBurning: false,
   freighterPhase: 'impounded', freighterProgress: 0, freighterAuto: true,
   hangarDoor: 0, hangarMode: 'auto',
 }))
@@ -96,6 +98,8 @@ let acc = 0
 let lastPhase: ShuttlePhase = 'away'
 let lastFreighter: FreighterPhase = 'impounded'
 let lastKills = 0
+let lastStrikes = 0
+let dumpDown = false
 export function publishSim(dt: number) {
   acc += dt
   const ph = sim.shuttle.phase
@@ -112,6 +116,15 @@ export function publishSim(dt: number) {
   if (sim.xwing.kills !== lastKills) {
     lastKills = sim.xwing.kills
     feed('[SIM] Picket fighter Sable-9 destroyed by the intruder over the eastern approach', 'alert')
+  }
+  if (sim.xwing.strikes !== lastStrikes) {
+    lastStrikes = sim.xwing.strikes
+    dumpDown = true
+    feed('[SIM] FUEL DUMP HIT outside the south-east wall — tanks and a fuel truck destroyed, fire crews responding', 'alert')
+  }
+  if (dumpDown && sim.xwing.strikeAt !== null && sim.time - sim.xwing.strikeAt >= FUEL_DUMP.rebuildAfter) {
+    dumpDown = false
+    feed('[SIM] Fuel dump fire is out — depot rebuilt and back in service')
   }
   const fp = sim.freighter.phase
   if (fp !== lastFreighter) {
@@ -135,6 +148,7 @@ export function publishSim(dt: number) {
     patrolActive: sim.patrol.active,
     fighters: sim.patrol.fighters.map((f) => ({ id: f.id, callsign: f.callsign, state: f.state })),
     xwingActive: sim.xwing.active,
+    dumpBurning: dumpDown,
     freighterPhase: fp,
     freighterProgress: sim.freighter.progress,
     freighterAuto: sim.freighter.autoCycle,

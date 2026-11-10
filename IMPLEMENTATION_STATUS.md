@@ -100,9 +100,13 @@ New scenery (all simulated, all original geometry):
   escapes through the eastern valley, and is later escorted back and lands. Alert banner, feed lines, engine sound.
 * ✅ **Heavy assault walker** (AT-AT-inspired, `vehicles/Walker.tsx`, `vehicles/walkerGait.ts`): circles the base
   outside the wall. Lateral-sequence gait with two-bone leg IK; planted feet are exactly stationary (unit-tested).
-* ✅ **Shoot-down** during the X-wing flyby (`aircraft/Combat.tsx`, `XWING_KILL` in `flight.ts`): a picket TIE closes
-  head-on, the X-wing opens fire, the TIE explodes (flash, fireball, smoke, tumbling wreckage that lands), and the
-  X-wing flies through the debris. Cannon and explosion sounds arrive late with distance.
+* ✅ **X-wing attack run** (`aircraft/Combat.tsx`, `world/FuelDump.tsx`, `XWING_KILL` / `XWING_STRAFE` in
+  `flight.ts`): the intruder now comes in close along the east wall. First a picket TIE closes head-on and is shot
+  down (flash, fireball, smoke, tumbling wreckage); then the X-wing dives, strafes the **fuel dump** outside the
+  south-east wall and blows up its tanks and the parked fuel truck. The dump burns under a smoke column for about
+  70 s and is rebuilt after 110 s. The attack runs a minute after load and every four minutes after that; Air
+  Control has *Watch the attack*, which triggers it and follows the X-wing. Cannon and explosion sounds arrive late
+  with distance.
 * ✅ **Lightsaber duel** on Secondary Pad 2 (`personnel/Duel.tsx`, `personnel/duelMoves.ts`, `personnel/footwork.ts`):
   a tan-robed master against his dark-robed apprentice, both with blue blades, staged as a 43-second sparring
   round that repeats elsewhere on the pad: face-off and ignition, circling in, the apprentice attacking while the
@@ -132,6 +136,7 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 * Cursor agents report status, tools and prompts, but not token usage (Cursor's counters are not verified).
 * The walker and the duellists do not react to vehicles or personnel crossing their path.
 * The picket TIE appears at range without a launch sequence; interceptors still only chase.
+* The fuel dump is rebuilt instantly when its timer ends; nothing else on the ground can be destroyed.
 
 ## Repository state
 

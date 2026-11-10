@@ -367,9 +367,12 @@ function AircraftPanel() {
       ))}
       <h4>Unidentified contacts</h4>
       <div className="btns">
-        <button className="warn" onClick={commands.xwingFlyby} disabled={s.xwingActive}>Simulate X-wing flyby</button>
+        <button className="warn" onClick={() => { commands.xwingFlyby(); useStore.getState().enterInterior(null); follow({ kind: 'aircraft', id: 'xwing' }) }} disabled={s.xwingActive}>Watch the attack</button>
+        <button onClick={commands.xwingFlyby} disabled={s.xwingActive}>Simulate X-wing attack</button>
         <button onClick={() => follow({ kind: 'aircraft', id: 'xwing' })} disabled={!s.xwingActive}>Track contact</button>
       </div>
+      <div className="kv"><span>Attack run</span><b>shoots down a picket TIE, then strafes the fuel dump</b></div>
+      <div className="kv clickable" onClick={() => { useStore.getState().enterInterior(null); useStore.getState().setCameraMode('orbit'); useStore.getState().select({ kind: 'aircraft', id: 'dump' }) }}><span>Fuel dump (south-east wall)</span><b style={{ color: s.dumpBurning ? '#ff7d70' : undefined }}>{s.dumpBurning ? 'BURNING' : 'intact'}</b></div>
       <div className="kv"><span>Intercept</span><b>{s.patrolActive ? 'interceptor pair will pursue' : 'patrols down — no intercept'}</b></div>
       <h4>Impounded freighter · Pad 3</h4>
       <div className="kv"><span>Status</span><b>{FREIGHTER_LABEL[s.freighterPhase]}</b></div>
@@ -468,12 +471,12 @@ function Inspector() {
   }, [a?.id, a?.last_event_at]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!selection) return null
   if (selection.kind === 'aircraft') {
-    const names: Record<string, string> = { shuttle: 'Imperial Shuttle (Lambda-inspired)', xwing: 'Unidentified starfighter (X-wing-inspired)', freighter: 'Impounded light freighter (Falcon-inspired)', walker: 'Heavy assault walker (AT-AT-inspired)' }
+    const names: Record<string, string> = { shuttle: 'Imperial Shuttle (Lambda-inspired)', xwing: 'Unidentified starfighter (X-wing-inspired)', freighter: 'Impounded light freighter (Falcon-inspired)', walker: 'Heavy assault walker (AT-AT-inspired)', dump: 'Fuel dump and fuel truck', picket: 'Picket TIE-inspired fighter' }
     return (
       <motion.div className="inspector" {...inspIn}>
-        <div className="ins-head"><div><div className="ins-kind">{selection.id === 'walker' ? 'SIMULATED GROUND UNIT' : 'SIMULATED AIRCRAFT'}</div><div className="ins-name">{names[selection.id] ?? `TIE-inspired fighter ${selection.id}`}</div></div><button className="icon-btn" aria-label="Close inspector" title="Close (Esc)" onClick={() => select(null)}><IconClose /></button></div>
+        <div className="ins-head"><div><div className="ins-kind">{selection.id === 'walker' ? 'SIMULATED GROUND UNIT' : selection.id === 'dump' ? 'SIMULATED INSTALLATION' : 'SIMULATED AIRCRAFT'}</div><div className="ins-name">{names[selection.id] ?? `TIE-inspired fighter ${selection.id}`}</div></div><button className="icon-btn" aria-label="Close inspector" title="Close (Esc)" onClick={() => select(null)}><IconClose /></button></div>
         <div className="sim-note">Environmental simulation only. Not an AI agent, not real telemetry.</div>
-        <div className="btns"><button onClick={() => follow({ kind: 'aircraft', id: selection.id })}>Follow with camera</button></div>
+        {selection.id !== 'dump' && <div className="btns"><button onClick={() => follow({ kind: 'aircraft', id: selection.id })}>Follow with camera</button></div>}
       </motion.div>
     )
   }
@@ -584,7 +587,7 @@ function Alert() {
     <AnimatePresence>
       {x && (
         <motion.div key="alert" role="alert" className="alert-banner" style={{ x: '-50%' }} initial={{ opacity: 0, y: -24, scaleX: 0.6 }} animate={{ opacity: [1, 0.6, 1], y: 0, scaleX: 1 }} exit={{ opacity: 0, y: -16, transition: FAST }} transition={{ ...EASE, opacity: { duration: 1.2, repeat: Infinity, ease: 'easeInOut' } }}>
-          <IconAlert size={16} className="al-ico" /> {xwing ? 'UNIDENTIFIED CONTACT — EASTERN SECTOR' : 'IMPOUNDED FREIGHTER ESCAPING — PAD 3'} · <span>simulation</span>
+          <IconAlert size={16} className="al-ico" /> {xwing ? 'HOSTILE STARFIGHTER ATTACKING — EASTERN SECTOR' : 'IMPOUNDED FREIGHTER ESCAPING — PAD 3'} · <span>simulation</span>
         </motion.div>
       )}
     </AnimatePresence>

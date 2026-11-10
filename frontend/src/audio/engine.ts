@@ -12,7 +12,7 @@
 import * as THREE from 'three'
 import { HANGAR_DOOR } from '../world/layout'
 import { sim } from '../sim/world'
-import { XWING_KILL, XWING_TIMING } from '../aircraft/flight'
+import { XWING_KILL, XWING_STRAFE, XWING_TIMING } from '../aircraft/flight'
 
 export const SPEED_OF_SOUND = 343
 const DOPPLER_SCALE = 0.6
@@ -486,7 +486,7 @@ const lisPos = new THREE.Vector3()
 const lisPrev = new THREE.Vector3()
 const lisVel = new THREE.Vector3()
 let lisHasPrev = false
-let last = { gear: 0, ramp: 0, phase: 'away', xwing: false, door: 0, runaway: false, kills: 0, firing: false }
+let last = { gear: 0, ramp: 0, phase: 'away', xwing: false, door: 0, runaway: false, kills: 0, firing: false, strikes: 0, strafing: false }
 
 function start() {
   if (ctx) return
@@ -531,7 +531,7 @@ function start() {
   interceptors = [new TieVoice(), new TieVoice()]
   xwing = new XWingVoice()
   door = new DoorVoice()
-  last = { gear: sim.shuttle.state.gear, ramp: sim.shuttle.state.ramp, phase: sim.shuttle.phase, xwing: sim.xwing.active, door: sim.hangarDoor, runaway: sim.freighter.escaping, kills: sim.xwing.kills, firing: sim.xwing.firing }
+  last = { gear: sim.shuttle.state.gear, ramp: sim.shuttle.state.ramp, phase: sim.shuttle.phase, xwing: sim.xwing.active, door: sim.hangarDoor, runaway: sim.freighter.escaping, kills: sim.xwing.kills, firing: sim.xwing.firing, strikes: sim.xwing.strikes, strafing: sim.xwing.strafing }
   document.addEventListener('visibilitychange', () => {
     if (!ctx || !enabled) return
     if (document.hidden) ctx.suspend()
@@ -670,6 +670,10 @@ export function updateAudio(camera: THREE.Camera, dt: number, interior: string |
   if (!last.firing && sim.xwing.firing) cannonBurst(x.pos.distanceTo(p), (XWING_KILL.hit - XWING_KILL.fire) * XWING_TIMING.duration)
   last.firing = sim.xwing.firing
   if (sim.xwing.kills !== last.kills) { last.kills = sim.xwing.kills; explosion(sim.xwing.killPos.distanceTo(p)) }
+  // the ground attack on the fuel dump
+  if (!last.strafing && sim.xwing.strafing) cannonBurst(x.pos.distanceTo(p), (XWING_STRAFE.hit - XWING_STRAFE.fire) * XWING_TIMING.duration)
+  last.strafing = sim.xwing.strafing
+  if (sim.xwing.strikes !== last.strikes) { last.strikes = sim.xwing.strikes; explosion(XWING_STRAFE.target.distanceTo(p)) }
 
   // impounded freighter: silent on the pad, engines from liftoff to touchdown
   const fr = sim.freighter.state

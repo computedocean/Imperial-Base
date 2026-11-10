@@ -187,6 +187,7 @@ export function AircraftLayer() {
       <Picket />
       <LaserBolts />
       <Explosion />
+      <Explosion kind="strike" />
       <Interceptor i={0} />
       <Interceptor i={1} />
       <ParkedFighters />

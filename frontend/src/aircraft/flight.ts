@@ -454,15 +454,42 @@ export const XWING_TIMING = { duration: 48 }
  * The shoot-down, in fractions of the flyby: the picket appears, the intruder opens fire, the picket
  * is hit when `gap` metres ahead. `closing` is the picket's speed relative to the intruder's.
  */
-export const XWING_KILL = { appear: 0.12, fire: 0.405, hit: 0.44, gap: 170, closing: 0.8, offsetY: 26 }
+export const XWING_KILL = { appear: 0.06, fire: 0.262, hit: 0.295, gap: 170, closing: 0.8, offsetY: 26 }
+/** The fuel dump outside the south-east wall: the intruder's ground target. */
+export const FUEL_DUMP = { x: 338, z: 338, radius: 16, /** seconds a wrecked dump burns before it is rebuilt */ rebuildAfter: 110 }
+// The intruder comes in from the north-east, shoots down the picket, dives along the east wall,
+// strafes the fuel dump and climbs away to the south-east.
 export const XWING_PATH = new FlightPath(clearSpline(liftAboveTerrain([
   new THREE.Vector3(3400, 520, -4200),
   new THREE.Vector3(2300, 330, -1900),
-  new THREE.Vector3(1500, 230, -500),
-  new THREE.Vector3(1250, 210, 700),
+  new THREE.Vector3(1350, 210, -800),
+  new THREE.Vector3(820, 120, -170),
+  new THREE.Vector3(500, 62, 230),
+  new THREE.Vector3(430, 80, 640),
+  new THREE.Vector3(800, 180, 1320),
   new THREE.Vector3(1700, 300, 2200),
   new THREE.Vector3(3000, 520, 4300),
-], 120), 130))
+], 50), 55))
+
+/**
+ * The strafing run, in fractions of the flyby: the intruder opens fire on the fuel dump `fireRange`
+ * metres out and the dump goes up when the fire has walked onto it, `hitRange` metres out.
+ */
+export const XWING_STRAFE = (() => {
+  // where on the path the dump is `range` metres ahead (the last such point before the closest approach)
+  const target = new THREE.Vector3(FUEL_DUMP.x, 6, FUEL_DUMP.z)
+  const p = new THREE.Vector3()
+  let closest = 0, best = Infinity
+  for (let i = 0; i <= 4000; i++) {
+    const d = XWING_PATH.point(i / 4000, p).distanceTo(target)
+    if (d < best) { best = d; closest = i / 4000 }
+  }
+  const before = (range: number) => {
+    for (let u = closest; u > 0; u -= 1 / 4000) if (XWING_PATH.point(u, p).distanceTo(target) >= range) return u
+    return 0
+  }
+  return { target, closest, miss: best, fire: before(620), hit: before(250) }
+})()
 
 export class XWingSim {
   active = false
@@ -488,6 +515,11 @@ export class XWingSim {
   readonly killPos = new THREE.Vector3()
   /** Counts kills so far, so views can react to a new one exactly once. */
   kills = 0
+  /** True while the intruder is strafing the fuel dump. */
+  strafing = false
+  /** Simulation time the fuel dump was hit (kept after the pass: the dump burns, then is rebuilt). */
+  strikeAt: number | null = null
+  strikes = 0
 
   trigger(now: number, withIntercept: boolean) {
     if (this.active) return false
@@ -496,8 +528,13 @@ export class XWingSim {
     this.intercept = withIntercept
     this.killAt = null
     this.firing = false
+    this.strafing = false
+    this.struck = false
     return true
   }
+
+  /** the dump has been hit on this pass */
+  private struck = false
 
   /** Path parameter of the picket for the intruder's parameter k: closing head-on, `gap` apart at the kill. */
   private picketU(k: number) {
@@ -512,6 +549,7 @@ export class XWingSim {
       this.pose.visible = false
       this.picket.visible = false
       this.firing = false
+      this.strafing = false
       this.interceptors.forEach((p) => (p.visible = false))
       return this.pose
     }
@@ -536,6 +574,13 @@ export class XWingSim {
         this.killAt = this.t0 + K.hit * D
         XWING_PATH.point(this.picketU(K.hit), this.killPos)
         this.kills++
+      }
+      // ground attack: cannon fire walks onto the fuel dump, which then goes up
+      this.strafing = kk >= XWING_STRAFE.fire && kk < XWING_STRAFE.hit + 0.004
+      if (!this.struck && kk >= XWING_STRAFE.hit) {
+        this.struck = true
+        this.strikeAt = this.t0 + XWING_STRAFE.hit * D
+        this.strikes++
       }
     }
     const speed = XWING_PATH.length / D

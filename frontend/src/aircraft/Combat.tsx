@@ -8,7 +8,7 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { sim } from '../sim/world'
 import { terrainHeight } from '../world/layout'
-import { XWING_PATH, XWING_TIMING } from './flight'
+import { XWING_KILL, XWING_PATH, XWING_STRAFE, XWING_TIMING } from './flight'
 import { TieFighter } from './models/TieFighter'
 import { darkMetalMat } from './models/materials'
 
@@ -46,17 +46,20 @@ export function LaserBolts() {
     if (!m) return
     const x = sim.xwing
     const s = st.current
-    if (x.firing && x.pose.visible) {
+    if ((x.firing || x.strafing) && x.pose.visible) {
       s.since += dt
       while (s.since >= 0.085) {
         s.since -= 0.085
         const b = bolts[s.next++ % BOLTS]
         const [mx, my] = MUZZLES[s.muzzle++ % 4]
         b.pos.set(mx, my, 3).applyQuaternion(x.pose.quat).add(x.pose.pos)
-        // lead the target a little so the fire converges on it
-        _aim.copy(x.picket.pos).sub(b.pos).normalize()
+        // air target: the picket fighter. Ground target: the fuel dump, with the fire scattered across it
+        if (x.firing) _aim.copy(x.picket.pos)
+        else _aim.copy(XWING_STRAFE.target).add(_v.set(Math.sin(s.next * 2.3) * 9, -5, Math.cos(s.next * 1.7) * 9))
+        const range = _aim.distanceTo(b.pos)
+        _aim.sub(b.pos).normalize()
         b.vel.copy(_aim).multiplyScalar(BOLT_SPEED)
-        b.life = 0.55
+        b.life = Math.min(0.75, range / BOLT_SPEED) // a bolt ends where it lands
       }
     } else s.since = 0.085
     let n = 0
@@ -92,7 +95,7 @@ function rng(seed: number) {
 }
 
 /** Soft round puff: opaque core fading to nothing at the rim (flat spheres read as paper discs). */
-function puffTexture() {
+export function puffTexture() {
   const c = document.createElement('canvas')
   c.width = c.height = 128
   const ctx = c.getContext('2d')!
@@ -109,7 +112,8 @@ function puffTexture() {
 const FIRE = 6
 const SMOKE = 4
 
-export function Explosion() {
+/** `kind` picks the event: the picket fighter in the air, or the fuel dump on the ground (bigger). */
+export function Explosion({ kind = 'kill' }: { kind?: 'kill' | 'strike' }) {
   const root = useRef<THREE.Group>(null)
   const flash = useRef<THREE.Sprite>(null)
   const fires = useRef<(THREE.Sprite | null)[]>([])
@@ -122,7 +126,7 @@ export function Explosion() {
     return {
       flash: glow('#fff1c0'),
       fire: Array.from({ length: FIRE }, (_, i) => glow(i % 2 ? '#ff5a12' : '#ffa030')),
-      smoke: Array.from({ length: SMOKE }, () => new THREE.SpriteMaterial({ map, color: '#1c1612', transparent: true, depthWrite: false })),
+      smoke: Array.from({ length: SMOKE }, () => new THREE.SpriteMaterial({ map, color: '#0f0c0b', transparent: true, depthWrite: false, fog: false })),
     }
   }, [])
   // each shard: outward velocity, spin axis and size. The two biggest are the wing panels.
@@ -152,18 +156,28 @@ export function Explosion() {
     const g = root.current
     if (!g) return
     const x = sim.xwing
-    const age = x.killAt === null ? -1 : sim.time - x.killAt
+    const ground = kind === 'strike'
+    const at = ground ? x.strikeAt : x.killAt
+    const where = ground ? XWING_STRAFE.target : x.killPos
+    const count = ground ? x.strikes : x.kills
+    const size = ground ? 1.7 : 1
+    const age = at === null ? -1 : sim.time - at
     if (age < 0 || age > LIFE) { g.visible = false; return }
-    if (seen.current !== x.kills) {
-      seen.current = x.kills
+    if (seen.current !== count) {
+      seen.current = count
+      // wreckage in the air keeps some of the fighter's momentum; on the ground it just goes up and out
       const speed = (XWING_PATH.length / XWING_TIMING.duration) * 0.8
-      XWING_PATH.tangent(0.45, drift).multiplyScalar(-speed * 0.35)
+      if (ground) drift.set(0, 14, 0)
+      else XWING_PATH.tangent(XWING_KILL.hit, drift).multiplyScalar(-speed * 0.35)
     }
     g.visible = true
-    g.position.copy(x.killPos)
+    g.position.copy(where)
+    if (ground) g.position.y += 8 // the fireball rises off the tanks
+    g.scale.setScalar(size)
     const ease = (k: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, k)), 3)
     if (flash.current) {
-      flash.current.scale.setScalar(30 + 110 * ease(age / 0.22))
+      // on the ground the flash is kept smaller: a huge one is cut off by the terrain in a hard line
+      flash.current.scale.setScalar((30 + 110 * ease(age / 0.22)) * (ground ? 0.5 : 1))
       mats.flash.opacity = Math.max(0, 1 - age / 0.55)
       flash.current.visible = age < 0.55
     }
@@ -199,7 +213,7 @@ export function Explosion() {
           (p.vel.z + drift.z) * age,
         )
         // wreckage that reaches the ground stays there
-        const floor = terrainHeight(x.killPos.x + _o.position.x, x.killPos.z + _o.position.z) - x.killPos.y + 0.3
+        const floor = (terrainHeight(where.x + _o.position.x * size, where.z + _o.position.z * size) - g.position.y + 0.3) / size
         const landed = _o.position.y < floor
         if (landed) _o.position.y = floor
         _o.quaternion.setFromAxisAngle(p.axis, landed ? 1 : age * p.spin)

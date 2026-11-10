@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { obstacleBoxes, terrainHeight } from '../world/layout'
 import {
   FlightPath, MAIN_PAD, PATROL_ROUTES, PatrolSim, SHUTTLE_APPROACH, SHUTTLE_CLIMB, SHUTTLE_TIMING, ShuttleSim,
-  XWING_KILL, XWING_PATH, XWING_TIMING, XWingSim, orient,
+  FUEL_DUMP, XWING_KILL, XWING_PATH, XWING_STRAFE, XWING_TIMING, XWingSim, orient,
 } from './flight'
 
 const boxes = obstacleBoxes()
@@ -48,8 +48,8 @@ describe('flight paths clear terrain and buildings', () => {
       assertNoBuildingHits(r)
     }
   })
-  it('x-wing flyby keeps >= 100 m terrain clearance', () => {
-    expect(minClearance(XWING_PATH)).toBeGreaterThan(100)
+  it('x-wing flyby keeps >= 45 m terrain clearance, even on its strafing dive', () => {
+    expect(minClearance(XWING_PATH)).toBeGreaterThan(45)
     assertNoBuildingHits(XWING_PATH)
   })
 })
@@ -126,7 +126,7 @@ describe('x-wing flyby', () => {
     const sim = new XWingSim()
     sim.trigger(0, true)
     expect(sim.update(10).visible).toBe(true)
-    expect(sim.update(24).sFoil).toBeGreaterThan(0.9)
+    expect(sim.update(20).sFoil).toBeGreaterThan(0.9)
     sim.update(80)
     expect(sim.active).toBe(false)
   })
@@ -175,5 +175,46 @@ describe('x-wing shoots down the picket fighter', () => {
     expect(sim.killAt).toBeNull()
     sim.update(200 + 0.5 * D)
     expect(sim.kills).toBe(2)
+  })
+})
+
+describe('x-wing strafes the fuel dump', () => {
+  const D = XWING_TIMING.duration
+  it('dives past the dump close enough to hit it, after dealing with the picket', () => {
+    expect(XWING_STRAFE.miss).toBeLessThan(220)
+    expect(XWING_STRAFE.fire).toBeGreaterThan(XWING_KILL.hit + 0.02) // one fight at a time
+    expect(XWING_STRAFE.fire).toBeLessThan(XWING_STRAFE.hit)
+    expect(XWING_STRAFE.hit).toBeLessThan(XWING_STRAFE.closest)
+    // the dump sits between the wall and the walker's lane
+    const r = Math.hypot(FUEL_DUMP.x, FUEL_DUMP.z)
+    expect(r - FUEL_DUMP.radius).toBeGreaterThan(450)
+    expect(r + FUEL_DUMP.radius).toBeLessThan(515)
+  })
+  it('opens fire on the way in and destroys it exactly once per pass', () => {
+    const sim = new XWingSim()
+    sim.trigger(50, false)
+    sim.update(50 + (XWING_STRAFE.fire - 0.01) * D)
+    expect(sim.strafing).toBe(false)
+    sim.update(50 + (XWING_STRAFE.fire + 0.005) * D)
+    expect(sim.strafing).toBe(true)
+    expect(sim.strikeAt).toBeNull()
+    // it is firing at something in front of it
+    const toDump = XWING_STRAFE.target.clone().sub(sim.pose.pos).normalize()
+    const nose = new THREE.Vector3(0, 0, 1).applyQuaternion(sim.pose.quat)
+    expect(nose.dot(toDump)).toBeGreaterThan(0.75)
+    sim.update(50 + (XWING_STRAFE.hit + 0.001) * D)
+    expect(sim.strikes).toBe(1)
+    expect(sim.strikeAt).toBeCloseTo(50 + XWING_STRAFE.hit * D, 6)
+    sim.update(50 + 0.8 * D)
+    expect(sim.strikes).toBe(1)
+    expect(sim.strafing).toBe(false)
+    // the hit is remembered after the intruder has gone (the dump keeps burning)
+    sim.update(50 + D + 30)
+    expect(sim.active).toBe(false)
+    expect(sim.strikeAt).not.toBeNull()
+    // and the next pass hits it again
+    sim.trigger(400, false)
+    sim.update(400 + 0.9 * D)
+    expect(sim.strikes).toBe(2)
   })
 })
