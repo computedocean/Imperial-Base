@@ -246,8 +246,87 @@ def lightmap_unwrap(ob, margin=0.003):
     me.uv_layers.active = me.uv_layers['tile']
 
 
-def bake_ao(ob, out_path, size=2048, samples=64, distance=6.0, ground=True, blur=1):
-    """Bake ambient occlusion (Cycles, CPU) into the lightmap UV and save it as JPEG."""
+EDGE_GAIN = 3.5
+
+
+def _blur(a):
+    import numpy as np
+    return (a + np.roll(a, 1, 0) + np.roll(a, -1, 0) + np.roll(a, 1, 1) + np.roll(a, -1, 1)) / 5
+
+
+def _noise(size, cell=48, seed=7):
+    """Smooth random field in 0..1 (bilinear upsample of a coarse grid): makes the wear patchy rather than uniform."""
+    import numpy as np
+    n = size // cell + 2
+    low = np.random.default_rng(seed).random((n, n)).astype(np.float32)
+    t = np.linspace(0, n - 1.001, size, dtype=np.float32)
+    i = np.floor(t).astype(int)
+    f = t - i
+    rows = low[i] * (1 - f)[:, None] + low[i + 1] * f[:, None]
+    return rows[:, i] * (1 - f)[None, :] + rows[:, i + 1] * f[None, :]
+
+
+def _bake_edge_mask(ob, size, radius):
+    """Bake how close each point is to an edge (0 = flat, 1 = on an edge) into the lightmap UV.
+    Cycles' Bevel node returns the normal the surface would have if every edge were rounded by `radius`;
+    where that differs from the real normal there is an edge nearby, convex or concave."""
+    scene = bpy.context.scene
+    keep = scene.cycles.samples
+    scene.cycles.samples = 8
+    img = bpy.data.images.new(ob.name + '_edge', size, size, alpha=False)
+    img.colorspace_settings.name = 'Non-Color'
+    undo = []
+    for m in ob.data.materials:
+        nt = m.node_tree
+        out = next(n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL')
+        old = out.inputs['Surface'].links[0].from_socket if out.inputs['Surface'].links else None
+        bev = nt.nodes.new('ShaderNodeBevel')
+        bev.samples = 6
+        bev.inputs['Radius'].default_value = radius
+        geo = nt.nodes.new('ShaderNodeNewGeometry')
+        dot = nt.nodes.new('ShaderNodeVectorMath')
+        dot.operation = 'DOT_PRODUCT'
+        nt.links.new(bev.outputs['Normal'], dot.inputs[0])
+        nt.links.new(geo.outputs['Normal'], dot.inputs[1])
+        inv = nt.nodes.new('ShaderNodeMath')
+        inv.operation = 'SUBTRACT'
+        inv.inputs[0].default_value = 1.0
+        nt.links.new(dot.outputs['Value'], inv.inputs[1])
+        gain = nt.nodes.new('ShaderNodeMath')
+        gain.operation = 'MULTIPLY'
+        gain.use_clamp = True
+        gain.inputs[1].default_value = EDGE_GAIN
+        nt.links.new(inv.outputs['Value'], gain.inputs[0])
+        em = nt.nodes.new('ShaderNodeEmission')
+        nt.links.new(gain.outputs['Value'], em.inputs['Color'])
+        nt.links.new(em.outputs['Emission'], out.inputs['Surface'])
+        tex = nt.nodes.new('ShaderNodeTexImage')
+        tex.image = img
+        uvn = nt.nodes.new('ShaderNodeUVMap')
+        uvn.uv_map = 'lightmap'
+        nt.links.new(uvn.outputs['UV'], tex.inputs['Vector'])
+        for n in nt.nodes:
+            n.select = False
+        tex.select = True
+        nt.nodes.active = tex
+        undo.append((nt, out, old, [bev, geo, dot, inv, gain, em, tex, uvn]))
+    bpy.ops.object.bake(type='EMIT', margin=6, margin_type='EXTEND', use_clear=True, uv_layer='lightmap')
+    for nt, out, old, nodes in undo:
+        for n in nodes:
+            nt.nodes.remove(n)
+        if old:
+            nt.links.new(old, out.inputs['Surface'])
+    scene.cycles.samples = keep
+    return img
+
+
+def bake_ao(ob, out_path, size=2048, samples=64, distance=6.0, ground=True, blur=1, wear=True):
+    """Bake the model's surface map (Cycles, CPU) into the lightmap UV and save it as a greyscale JPEG.
+
+    One channel carries two things, which never overlap because worn edges are exposed and crevices are not:
+      value <= 0.75   ambient occlusion: occlusion = value / 0.75 (0 = deep crevice, 1 = open surface)
+      value >  0.75   edge wear: wear = (value - 0.75) / 0.25 (paint rubbed off exposed, convex edges)
+    wear=False writes occlusion only (same encoding). The app decodes it in aircraft/models/Baked.tsx."""
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'CPU'
@@ -278,17 +357,24 @@ def bake_ao(ob, out_path, size=2048, samples=64, distance=6.0, ground=True, blur
     bpy.context.view_layer.objects.active = ob
     ob.data.uv_layers.active = ob.data.uv_layers['lightmap']
     bpy.ops.object.bake(type='AO', margin=6, margin_type='EXTEND', use_clear=True, uv_layer='lightmap')
+    edge = _bake_edge_mask(ob, size, distance * 0.05) if wear else None
     ob.data.uv_layers.active = ob.data.uv_layers['tile']
-    if blur:
-        import numpy as np
-        px = np.array(img.pixels[:], dtype=np.float32).reshape(size, size, 4)
-        a = px[:, :, 0]
-        for _ in range(blur):
-            a = (a + np.roll(a, 1, 0) + np.roll(a, -1, 0) + np.roll(a, 1, 1) + np.roll(a, -1, 1)) / 5
-        # lift the floor slightly so crevices stay readable rather than black
-        a = 0.26 + 0.74 * np.clip(a, 0, 1)
-        px[:, :, 0] = px[:, :, 1] = px[:, :, 2] = a
-        img.pixels[:] = px.ravel()
+    import numpy as np
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(size, size, 4)
+    a = np.clip(px[:, :, 0], 0, 1)
+    for _ in range(blur):
+        a = _blur(a)
+    # lift the floor slightly so crevices stay readable rather than black
+    out = 0.75 * (0.26 + 0.74 * a)
+    if edge is not None:
+        e = _blur(np.array(edge.pixels[:], dtype=np.float32).reshape(size, size, 4)[:, :, 0])
+        exposed = np.clip((a - 0.7) / 0.22, 0, 1)
+        exposed = exposed * exposed * (3 - 2 * exposed)          # only edges that are out in the open wear
+        w = np.clip(e, 0, 1) * exposed * (0.3 + 0.7 * _noise(size))
+        out = np.where(w > 0.03, 0.75 + 0.25 * w, out)
+        bpy.data.images.remove(edge)
+    px[:, :, 0] = px[:, :, 1] = px[:, :, 2] = out
+    img.pixels[:] = px.ravel()
     scene.view_settings.view_transform = 'Standard'
     scene.render.image_settings.file_format = 'JPEG'
     scene.render.image_settings.quality = 88

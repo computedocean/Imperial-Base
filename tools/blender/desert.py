@@ -89,7 +89,7 @@ def main():
         for o in others:
             o.hide_render = True  # nothing else may shade the bake
         bkit.lightmap_unwrap(ob, margin=0.004)
-        bkit.bake_ao(ob, os.path.join(out, ob.name + '_ao.jpg'), size=int(a.get('size', '1024')), samples=int(a.get('samples', '48')), distance=0.35, ground=True)
+        bkit.bake_ao(ob, os.path.join(out, ob.name + '_ao.jpg'), size=int(a.get('size', '1024')), samples=int(a.get('samples', '48')), distance=0.35, ground=True, wear=False)
         bkit.export_glb(ob, os.path.join(out, ob.name + '.glb'))
         for o in others:
             o.hide_render = False

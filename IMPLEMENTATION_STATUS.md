@@ -174,6 +174,11 @@ New scenery (all simulated, all original geometry):
   with a twin-gun turret), Bunker (ribbed glacis, blast door, vent stacks), Quarters (balconied floors, stair
   towers, medical wing) and Transport (five vehicle bays, gantry crane, container yard). 4k to 16k triangles each.
 * ✅ **Frame-rate readout** in the top bar (hover it for draw calls and triangles).
+* ✅ **Edge wear and crevice dust** on every Blender model: the baked map now also records worn edges
+  (`bkit.bake_ao`), decoded by one shared shader patch (`withBakedAO`). No extra textures.
+* ✅ **Compressed models** (`frontend/scripts/optimize-models.mjs`): Meshopt geometry compression, about five
+  times smaller.
+* Not done: rounded-edge normal maps (they would add a second large texture per model).
 * Not done: the duellists and the hooded leader are still built from simple shapes; no plume on the freighter's
   engine band or the destroyer.
 * Not verified: the marching troopers and the ship-landing dust were not seen on screen (the preview pane was
@@ -206,3 +211,11 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 
 `C:\Projects\Imperial-Base` is a fresh git repository (`git init`), **no commits made** — commit when you are
 happy with it. `.gitignore` excludes `node_modules`, `dist`, `.venv` and `backend/data` (the SQLite database).
+
+## March leader: generated figure (trial of Tripo)
+
+- The hooded leader of the march is now a generated model (`frontend/public/models/leader.glb`, 8,000 triangles,
+  0.5 MB, built by `tools/blender/leader.py`). The primitive figure remains as the loading and error fallback.
+- Not done: the model has no skeleton. It glides with the walk bob; legs and arms do not move. The fallback figure's
+  saber sits slightly away from its hand, because the saber is positioned for the generated model.
+- Not verified: the blade igniting on the new figure; frame-rate effect on a real GPU.

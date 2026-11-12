@@ -10,6 +10,7 @@ import { useGLTF, useTexture } from '@react-three/drei'
 import { Component, Suspense, useMemo, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { useStore } from '../state/store'
+import { withBakedAO } from '../aircraft/models/Baked'
 import { MAT, type MatKey } from './materials'
 
 const url = (f: string) => `${import.meta.env.BASE_URL}models/${f}`
@@ -30,16 +31,8 @@ function heroMaterial(key: MatKey, ao: THREE.Texture, cache: Map<string, THREE.M
     cache.set(key, base)
     return base
   }
-  const m = base.clone()
-  m.aoMap = ao
-  m.aoMapIntensity = 1
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.uDirectAO = { value: DIRECT_AO }
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uDirectAO;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n#ifdef USE_AOMAP\n  diffuseColor.rgb *= mix(1.0, texture2D(aoMap, vAoMapUv).r, uDirectAO);\n#endif')
-  }
-  m.customProgramCacheKey = () => `hero-ao-${DIRECT_AO}`
+  // the shared decoder for the baked surface map (occlusion, crevice dust, edge wear)
+  const m = withBakedAO(base.clone(), ao, DIRECT_AO)
   cache.set(key, m)
   return m
 }

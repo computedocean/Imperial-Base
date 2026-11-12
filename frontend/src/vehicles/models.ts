@@ -2,9 +2,10 @@
 // (one geometry per material per type → rendered as InstancedMeshes). Units: metres, nose = +Z,
 // y = 0 is the underside of the repulsor pods (the layer adds the hover height).
 import * as THREE from 'three'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { withBakedAO } from '../aircraft/models/Baked'
+import { plainGeometry, withBakedAO } from '../aircraft/models/Baked'
 import { Kit } from '../world/kit'
 import type { MatKey } from '../world/materials'
 import type { VehicleType } from './routes'
@@ -145,7 +146,7 @@ export interface BakedVehicle { body: THREE.BufferGeometry; glow: THREE.BufferGe
  */
 export async function loadBakedVehicle(type: VehicleType): Promise<BakedVehicle> {
   const base = `${import.meta.env.BASE_URL}models/veh_${type}`
-  const [gltf, ao] = await Promise.all([new GLTFLoader().loadAsync(`${base}.glb`), new THREE.TextureLoader().loadAsync(`${base}_ao.jpg`)])
+  const [gltf, ao] = await Promise.all([new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(`${base}.glb`), new THREE.TextureLoader().loadAsync(`${base}_ao.jpg`)])
   ao.flipY = false // glTF UV convention
   ao.channel = 1
   ao.colorSpace = THREE.NoColorSpace
@@ -157,7 +158,7 @@ export async function loadBakedVehicle(type: VehicleType): Promise<BakedVehicle>
     const mesh = o as THREE.Mesh
     if (!mesh.isMesh) return
     const name = ((mesh.material as THREE.Material).name || 'hull').replace(/\.\d+$/, '') as MatKey
-    const g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld)
+    const g = plainGeometry(mesh)
     if (GLOW[name]) glow.push(colorize(g, GLOW[name]!, true))
     else body.push(colorize(g, BODY[name] ?? '#888888', true))
   })

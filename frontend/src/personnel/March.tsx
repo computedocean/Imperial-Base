@@ -1,13 +1,16 @@
 /**
  * The march on the Temple: a hooded dark knight leading a column of white-armoured clone troopers in
- * step along the approach and in through the great door. Original figures built from
- * primitives; where everyone is comes from marchPlan.ts.
+ * step along the approach and in through the great door. The troopers are built from primitives; the leader is
+ * a generated model (public/models/leader.glb, see tools/blender/leader.py) with a primitive figure as its
+ * fallback. Where everyone is comes from marchPlan.ts.
  * Simulated scenery — not AI agents, not real telemetry.
  */
 import { useFrame } from '@react-three/fiber'
-import { useMemo, useRef } from 'react'
+import { useGLTF } from '@react-three/drei'
+import { Suspense, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { ModelBoundary } from '../aircraft/models/Baked'
 import { sim } from '../sim/world'
 import { MARCH_FRAME, TROOPERS, createMarchState, marchAt, type Marcher } from './marchPlan'
 
@@ -200,6 +203,13 @@ function Troopers() {
 /** rifle held across the chest, muzzle up to the left */
 const _tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, 0.9, 0))
 
+/** The generated leader figure: robed, so it glides with the walk's bob and needs no leg animation. */
+function LeaderModel() {
+  const { scene } = useGLTF('/models/leader.glb')
+  useMemo(() => scene.traverse((o) => { o.castShadow = true }), [scene])
+  return <primitive object={scene} />
+}
+
 function Leader() {
   const root = useRef<THREE.Group>(null)
   const legs = useRef<(THREE.Mesh | null)[]>([])
@@ -241,8 +251,9 @@ function Leader() {
     }
   })
 
-  return (
-    <group ref={root} rotation={[0, Math.PI, 0]} visible={false}>
+  // the primitive figure: shown while the model loads, or if it fails to
+  const fallback = (
+    <>
       {[0, 1].map((i) => <mesh key={i} ref={(o) => { legs.current[i] = o }} material={m.boots} castShadow><cylinderGeometry args={[0.06, 0.08, 1, 7]} /></mesh>)}
       {/* knee-length robe, long cloak hanging behind, deep hood shadowing the face */}
       <mesh position={[0, 0.82, 0]} material={m.robe} castShadow><cylinderGeometry args={[0.2, 0.3, 0.6, 12, 1, true]} /></mesh>
@@ -251,10 +262,17 @@ function Leader() {
       <mesh ref={cloak} position={[0, 0.82, -0.2]} material={m.robe} castShadow><boxGeometry args={[0.6, 1.45, 0.05]} /></mesh>
       <mesh position={[0, 1.66, 0.01]} scale={[0.9, 1.05, 0.95]} material={m.skin}><sphereGeometry args={[0.11, 12, 10]} /></mesh>
       <mesh position={[0, 1.68, -0.03]} scale={[1.3, 1.35, 1.45]} material={m.robe} castShadow><sphereGeometry args={[0.13, 16, 12, Math.PI / 2 + 0.8, Math.PI * 2 - 1.6, 0, Math.PI * 0.8]} /></mesh>
-      {/* arms at his sides; the right hand carries the saber, point down and forward */}
+      {/* arms at his sides */}
       <mesh position={[0.27, 1.14, 0.02]} rotation={[0.08, 0, 0.1]} material={m.robe} castShadow><cylinderGeometry args={[0.075, 0.06, 0.62, 8]} /></mesh>
       <mesh position={[-0.27, 1.14, 0.02]} rotation={[0.08, 0, -0.1]} material={m.robe} castShadow><cylinderGeometry args={[0.075, 0.06, 0.62, 8]} /></mesh>
-      <group position={[-0.3, 0.84, 0.06]} rotation={[2.25, 0, -0.12]}>
+    </>
+  )
+
+  return (
+    <group ref={root} rotation={[0, Math.PI, 0]} visible={false}>
+      <ModelBoundary fallback={fallback}><Suspense fallback={fallback}><LeaderModel /></Suspense></ModelBoundary>
+      {/* the saber, in the model's right hand */}
+      <group position={[-0.47, 0.86, 0.07]} rotation={[2.25, 0, -0.12]}>
         <mesh material={m.hilt}><cylinderGeometry args={[0.022, 0.022, 0.26, 8]} /></mesh>
         <group ref={blade} position={[0, 0.13, 0]} visible={false}>
           <mesh position={[0, 0.575, 0]} material={m.core}><cylinderGeometry args={[0.018, 0.02, 1.15, 8]} /></mesh>

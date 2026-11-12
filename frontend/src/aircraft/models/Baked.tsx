@@ -16,22 +16,62 @@ const url = (f: string) => `${import.meta.env.BASE_URL}models/${f}`
 const DIRECT_AO = 0.5
 
 /**
- * Give a material the baked ambient occlusion. Standard aoMap only dims indirect light, so the map is
- * also multiplied into the albedo: crevices then read under direct sun without a real-time AO pass.
+ * Give a material the model's baked surface map (tools/blender/bkit.py, bake_ao). One greyscale channel carries
+ *   value <= 0.75   ambient occlusion = value / 0.75 (crevices)
+ *   value >  0.75   edge wear = (value - 0.75) / 0.25 (paint rubbed off exposed edges)
+ * Standard aoMap only dims indirect light, so the occlusion is also multiplied into the albedo (by `directAO`):
+ * crevices then read under direct sun without a real-time AO pass. Crevices also gather a little sand-coloured
+ * dust, and worn edges show brighter, smoother bare material.
  */
-export function withBakedAO<T extends THREE.Material>(material: T, ao: THREE.Texture): T {
+export function withBakedAO<T extends THREE.Material>(material: T, ao: THREE.Texture, directAO = DIRECT_AO): T {
   const m = material as unknown as THREE.MeshStandardMaterial
   if (!(m as any).isMeshStandardMaterial) return material
   m.aoMap = ao
   m.aoMapIntensity = 1
   m.onBeforeCompile = (shader) => {
-    shader.uniforms.uDirectAO = { value: DIRECT_AO }
+    shader.uniforms.uDirectAO = { value: directAO }
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uDirectAO;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n#ifdef USE_AOMAP\n  diffuseColor.rgb *= mix(1.0, texture2D(aoMap, vAoMapUv).r, uDirectAO);\n#endif')
+      .replace('#include <common>', '#include <common>\nuniform float uDirectAO;\nfloat bakedAO = 1.0;\nfloat bakedWear = 0.0;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+#ifdef USE_AOMAP
+  float bakedV = texture2D(aoMap, vAoMapUv).r;
+  bakedAO = min(bakedV / 0.75, 1.0);
+  bakedWear = smoothstep(0.1, 0.62, max(bakedV - 0.75, 0.0) / 0.25);
+  diffuseColor.rgb *= mix(1.0, bakedAO, uDirectAO);
+  diffuseColor.rgb *= mix(vec3(1.0), vec3(0.95, 0.85, 0.72), (1.0 - bakedAO) * 0.55);
+  diffuseColor.rgb = mix(diffuseColor.rgb, min(diffuseColor.rgb * 1.5 + 0.07, vec3(1.0)), bakedWear * 0.6);
+#endif`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n#ifdef USE_AOMAP\n  roughnessFactor *= mix(1.0, 0.6, bakedWear);\n#endif')
+      // indirect light uses the decoded occlusion, not the raw channel
+      .replace('#include <aomap_fragment>', THREE.ShaderChunk.aomap_fragment.replace(/texture2D\(\s*aoMap\s*,\s*vAoMapUv\s*\)\.r/, 'bakedAO'))
   }
-  m.customProgramCacheKey = () => `baked-ao-${DIRECT_AO}`
+  m.customProgramCacheKey = () => `baked-surface-${directAO}`
   return material
+}
+
+/**
+ * A mesh's geometry as plain float attributes in the model's own frame. The compressed GLBs store positions and
+ * normals as scaled integers with the scale on the mesh node, so code that takes a geometry out of its node
+ * (instancing, merging) must go through this first.
+ */
+export function plainGeometry(mesh: THREE.Mesh): THREE.BufferGeometry {
+  mesh.updateWorldMatrix(true, false)
+  const g = new THREE.BufferGeometry()
+  for (const [name, attr] of Object.entries(mesh.geometry.attributes)) {
+    const a = attr as THREE.BufferAttribute
+    const n = a.itemSize
+    const out = new Float32Array(a.count * n)
+    for (let i = 0; i < a.count; i++) {
+      out[i * n] = a.getX(i)
+      if (n > 1) out[i * n + 1] = a.getY(i)
+      if (n > 2) out[i * n + 2] = a.getZ(i)
+      if (n > 3) out[i * n + 3] = a.getW(i)
+    }
+    g.setAttribute(name, new THREE.BufferAttribute(out, n))
+  }
+  if (mesh.geometry.index) g.setIndex(Array.from(mesh.geometry.index.array))
+  g.applyMatrix4(mesh.matrixWorld)
+  return g
 }
 
 export type Bind = (name: string) => { material: THREE.Material; ao?: boolean; shadows?: boolean }

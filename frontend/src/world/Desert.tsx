@@ -6,7 +6,7 @@
 import { useGLTF, useTexture } from '@react-three/drei'
 import { Suspense, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { Baked, ModelBoundary, type Bind } from '../aircraft/models/Baked'
+import { Baked, ModelBoundary, plainGeometry, type Bind } from '../aircraft/models/Baked'
 import { useStore } from '../state/store'
 import { Rocks } from './Surroundings'
 import { terrainHeight } from './layout'
@@ -41,7 +41,7 @@ function ScannedRocks({ count }: { count: number }) {
     m.metalness = 0
     m.envMapIntensity = 0.5
     m.color.set('#ecd9c0') // warm the scans towards the colour of the sand they sit in
-    return { geometry: mesh!.geometry, material: m }
+    return { geometry: plainGeometry(mesh!), material: m }
   }), [gltfs])
   const per = Math.ceil(count / ROCKS.length)
   useLayoutEffect(() => {

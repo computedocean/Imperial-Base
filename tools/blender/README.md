@@ -87,3 +87,32 @@ footprints in `frontend/src/world/layout.ts`. They share a small vocabulary defi
 %B% -b --factory-startup -P tools/blender/divisions.py -- --out frontend/public/models --only security
 ```
 `frontend/src/world/Structures.tsx` loads each through `Hero`, with the code-built building as the fallback.
+
+## The baked surface map, and compressing the models
+
+Every build bakes ONE greyscale map per model (`<name>_ao.jpg`) that carries two things (`bkit.bake_ao`):
+
+* value <= 0.75: ambient occlusion, `value / 0.75` (crevices; the app also adds a little sand-coloured dust there)
+* value > 0.75: edge wear, `(value - 0.75) / 0.25` (paint rubbed off exposed edges, patchy by design)
+
+The edge mask comes from Cycles' Bevel node (where the rounded normal differs from the real one, an edge is near),
+kept only where the surface is exposed. The app decodes the map in `withBakedAO`
+(`frontend/src/aircraft/models/Baked.tsx`). `wear=False` bakes occlusion only (the mesas).
+
+After building, compress the GLBs in place (about five times smaller; safe to run twice):
+
+```
+cd frontend
+node scripts/optimize-models.mjs
+```
+It de-duplicates, reorders and quantises the geometry and packs it with Meshopt. Code that takes a geometry out of
+its GLB node (instancing, merging) must use `plainGeometry()` from `Baked.tsx`, because positions are stored as
+scaled integers.
+
+## The march leader (generated model)
+
+`leader.py` turns a figure generated on studio.tripo3d.ai into `frontend/public/models/leader.glb`: it drops stray
+fragments, stands the figure 1.85 m tall, bends the T-pose arms down to the sides, decimates to 8,000 triangles and
+shrinks the textures to 1K. The 17 MB source export is not in the repository; pass it with `--src`. Unlike the other
+models this one keeps its own material and textures. Free-plan Tripo output is public and its licence terms for
+commercial use are unclear: check them before distributing the project.
