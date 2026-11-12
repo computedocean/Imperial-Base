@@ -160,6 +160,9 @@ New scenery (all simulated, all original geometry):
 * ✅ **Engine plumes** (`aircraft/models/Plume.tsx`) on the gunship, shuttle, X-wing and TIE fighter, and **ground
   dust** (`world/GroundFx.tsx`) under the walker's feet and under ships low over the ground.
 * ✅ **Golden-hour colour**: bluer upper sky, lighter haze, brighter sand, slightly higher sun.
+* ✅ **Desert** (`world/Desert.tsx`, `tools/blender/desert.py`): the 450 boulders are now three photo-scanned
+  Poly Haven rocks (CC0, 1,500 triangles each, instanced), and seven terraced mesas made with Blender's A.N.T.
+  Landscape extension stand in the dunes between 1.2 and 1.9 km out. LOW quality keeps the simple rocks, no mesas.
 * Not done: the duellists and the hooded leader are still built from simple shapes; no plume on the freighter's
   engine band or the destroyer.
 * Not verified: the marching troopers and the ship-landing dust were not seen on screen (the preview pane was

@@ -80,7 +80,8 @@ function Model({ name, bind }: { name: string; bind: Bind }) {
   return <primitive object={object} />
 }
 
-class Fallback extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+/** Renders `fallback` instead of its children if they throw (a model file that is missing or broken). */
+export class ModelBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   componentDidCatch(e: unknown) { console.warn('[baked-models] falling back to procedural geometry:', e) }
@@ -92,10 +93,10 @@ export function Baked({ name, bind, fallback }: { name: string; bind: Bind; fall
   const low = useStore((s) => s.quality === 'low')
   if (low) return <>{fallback}</>
   return (
-    <Fallback fallback={fallback}>
+    <ModelBoundary fallback={fallback}>
       <Suspense fallback={fallback}>
         <Model name={name} bind={bind} />
       </Suspense>
-    </Fallback>
+    </ModelBoundary>
   )
 }

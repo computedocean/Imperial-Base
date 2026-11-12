@@ -15,12 +15,13 @@ import { publishSim, sim, stepSim } from './sim/world'
 import { QUALITY, useStore } from './state/store'
 import { Sky } from './world/Sky'
 import { Apron } from './world/Apron'
+import { DesertRocks, Mesas } from './world/Desert'
 import { FuelDump } from './world/FuelDump'
 import { GroundFx } from './world/GroundFx'
 import { Temple } from './world/Temple'
 import { WorldRendering } from './world/Rendering'
 import { Structures } from './world/Structures'
-import { BeaconBlink, Dust, Roads, Rocks, Settlements } from './world/Surroundings'
+import { BeaconBlink, Dust, Roads, Settlements } from './world/Surroundings'
 import { Terrain } from './world/Terrain'
 import { RoadProps } from './vehicles/RoadProps'
 import { VehicleLayer } from './vehicles/VehicleLayer'
@@ -93,7 +94,8 @@ export function Scene() {
         <Apron />
         <Roads terrainSegments={q.terrainSegments} />
         <Settlements terrainSegments={q.terrainSegments} />
-        <Rocks count={quality === 'low' ? 150 : 450} />
+        <DesertRocks count={quality === 'low' ? 150 : 450} />
+        <Mesas />
         <Dust count={q.dust} />
         {q.dust > 0 && <GroundFx />}
         <RoadProps />

@@ -43,3 +43,17 @@ windows.
 `bkit.py` gained `lathe` (solid of revolution about any axis; the profile may double back for intake lips and
 nozzles), `tube` (round strut between two points) and `sheet` (thin skin through a grid of points, for sails).
 Check the result in the app at `?preview=aircraft&focus=gunship` or `focus=barge`.
+
+## Desert: mesas and boulders
+
+`desert.py` generates three terraced mesas with the **A.N.T.Landscape** extension, bakes their ambient occlusion and
+exports `mesa_a/b/c.glb`. It needs that extension enabled in Blender's preferences, so run it without
+`--factory-startup` (or from the Scripting tab of an open Blender):
+
+```
+%B% -b -P tools/blender/desert.py -- --out frontend/public/models
+```
+The boulders (`rock_a/b/c.glb`) and the cliff texture (`cliff_diff.jpg`, `cliff_nor.jpg`) are Poly Haven CC0 assets
+(namaqualand_boulder_05, namaqualand_boulder_03, boulder_01, marble_cliff_03), imported through the MCP for Blender
+add-on, decimated to 1,500 triangles each and exported with colour and normal maps. `frontend/src/world/Desert.tsx`
+places both.
