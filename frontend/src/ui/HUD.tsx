@@ -11,6 +11,18 @@ import type { AgentInfo, HookEvent, TaskInfo } from '../state/types'
 import { IconAlert, IconBranch, IconClock, IconClose, IconMoon, IconSun } from './icons'
 import { FACILITIES, PLANET, facilityById, type DepartmentId } from '../world/layout'
 
+/** Frames per second, read once a second from the renderer statistics the scene publishes. */
+function FrameRate() {
+  const [s, setS] = useState<{ fps: number; calls: number; triangles: number } | null>(null)
+  useEffect(() => {
+    const id = setInterval(() => setS((window as any).__imperialStats ?? null), 1000)
+    return () => clearInterval(id)
+  }, [])
+  if (!s) return null
+  const tone = s.fps >= 50 ? 'ok' : s.fps >= 30 ? 'warn' : 'bad'
+  return <span className={`pill ${tone}`} title={`Frames per second. ${s.calls} draw calls, ${s.triangles.toLocaleString()} triangles per frame.`}>{s.fps} FPS</span>
+}
+
 const ago = (ts: number) => {
   const s = Math.max(0, Date.now() / 1000 - ts)
   if (s < 60) return `${Math.floor(s)}s ago`
@@ -130,6 +142,7 @@ function TopBar() {
         <span className={`pill ${duty.busy ? 'ok' : ''}`} title="Agents confirmed working right now">{duty.busy} WORKING</span>
         <span className="pill standby" title="Agents on the base awaiting orders, or whose current activity is unknown">{duty.standby} STANDBY</span>
         {ingest && !ingest.hook_installed && <span className="pill warn" title={`Run: python scripts\\install_hooks.py — spool: ${ingest.spool}`}>HOOK NOT INSTALLED</span>}
+        <FrameRate />
         <TimeButton />
         <SoundControl />
         <select value={quality} onChange={(e) => setQuality(e.target.value as Quality)} title="Graphics quality">

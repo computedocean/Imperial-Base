@@ -143,7 +143,7 @@ class Model:
         # loft() expects the first ring to face -axis; rings run towards +Z here
         self.loft(mat, [list(reversed(r)) for r in rings], bevel=bevel)
 
-    def sphere(self, mat, r, pos, seg=20, rings=10, squash=1.0, half=None):
+    def sphere(self, mat, r, pos, seg=20, rings=10, squash=1.0, half=None, smooth=False):
         """UV sphere centred on pos (three coords). half='top' / 'bottom' keeps one hemisphere (closed)."""
         lo, hi = (0, rings) if half is None else ((rings // 2, rings) if half == 'bottom' else (0, rings // 2))
         loops = []
@@ -152,7 +152,7 @@ class Model:
             rr = max(r * math.sin(a), r * 0.02)
             y = pos[1] + r * math.cos(a) * squash
             loops.append([(pos[0] + rr * math.cos(2 * math.pi * i / seg), y, pos[2] + rr * math.sin(2 * math.pi * i / seg)) for i in range(seg)])
-        self.loft(mat, list(reversed(loops)))
+        self.loft(mat, list(reversed(loops)), smooth=smooth)
 
     def ring_xy(self, z, w, yb, yt, c):
         """Chamfered rectangular section in the XY plane at depth z (for lofting hulls along Z)."""
@@ -400,11 +400,12 @@ def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
-def run(tag, parts, tile, preview_view=None, colors=None, margin=0.003):
+def run(tag, parts, tile, preview_view=None, colors=None, margin=0.003, ground=False):
     """Standard build for a model made of one or more parts: for each (build function, bake size, AO distance)
     build it, unwrap a lightmap, bake ambient occlusion and export <name>.glb + <name>_ao.jpg.
     Command-line options: --out <dir> --size <px, scales every part> --samples <n> --preview <dir>.
-    preview_view = (camera position, target, lens) renders the LAST part to <preview>/<name>.png."""
+    preview_view = (camera position, target, lens) renders the LAST part to <preview>/<name>.png.
+    ground=True bakes and previews with a ground plane (buildings); ships are modelled in mid-air."""
     a = args()
     out = os.path.abspath(a.get('out', 'frontend/public/models'))
     prev = a.get('preview')
@@ -422,11 +423,11 @@ def run(tag, parts, tile, preview_view=None, colors=None, margin=0.003):
         print(f'[{tag}] {m.name}: {m.tris} triangles, materials {m.mats}')
         lightmap_unwrap(ob, margin=margin)
         img = bake_ao(ob, os.path.join(out, m.name + '_ao.jpg'), size=max(256, int(size * scale)), samples=int(a.get('samples', '48')),
-                      distance=dist, ground=False)
+                      distance=dist, ground=ground)
         export_glb(ob, os.path.join(out, m.name + '.glb'))
     if prev and preview_view:
         os.makedirs(prev, exist_ok=True)
         PREVIEW_COLORS.update(colors or {})
         cam, target, lens = preview_view
-        preview(ob, img, os.path.join(os.path.abspath(prev), ob.name + '.png'), cam, target, ground=False, lens=lens)
+        preview(ob, img, os.path.join(os.path.abspath(prev), ob.name + '.png'), cam, target, ground=ground, lens=lens)
     print(f'[{tag}] done')

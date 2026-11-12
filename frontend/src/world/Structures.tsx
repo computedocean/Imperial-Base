@@ -496,15 +496,16 @@ export function Structures({ hidden }: { hidden?: string | null }) {
       <KitMesh build={buildHangar} name="hangar" />
       <Hero name="hangar" group="hangar-shell" fallback={<KitMesh build={buildHangarShell} name="hangar-shell" />} />
       <KitMesh build={buildLanding} name="landing" />
+      {/* division buildings: Blender-built (tools/blender/divisions.py), code-built as the fallback */}
       <PadMarkings />
-      <KitMesh build={buildIntelligence} name="intelligence" />
-      <KitMesh build={buildEngineering} name="engineering" />
-      <KitMesh build={buildOperations} name="operations" />
-      <KitMesh build={buildResearch} name="research" />
-      <KitMesh build={buildSecurity} name="security" />
-      <KitMesh build={buildBunker} name="bunker" />
-      <KitMesh build={buildQuarters} name="quarters" />
-      <KitMesh build={buildTransport} name="transport" />
+      <Hero name="div_intelligence" group="intelligence" fallback={<KitMesh build={buildIntelligence} name="intelligence" />} />
+      <Hero name="div_engineering" group="engineering" fallback={<KitMesh build={buildEngineering} name="engineering" />} />
+      <Hero name="div_operations" group="operations" fallback={<KitMesh build={buildOperations} name="operations" />} />
+      <Hero name="div_research" group="research" fallback={<KitMesh build={buildResearch} name="research" />} />
+      <Hero name="div_security" group="security" fallback={<KitMesh build={buildSecurity} name="security" />} />
+      <Hero name="div_bunker" group="bunker" fallback={<KitMesh build={buildBunker} name="bunker" />} />
+      <Hero name="div_quarters" group="quarters" fallback={<KitMesh build={buildQuarters} name="quarters" />} />
+      <Hero name="div_transport" group="transport" fallback={<KitMesh build={buildTransport} name="transport" />} />
       <KitMesh build={buildPerimeter} name="perimeter" />
     </group>
   )

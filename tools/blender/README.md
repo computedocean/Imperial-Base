@@ -74,3 +74,16 @@ wing, mirrored three times), `shuttle_body` + `shuttle_wing` (hinge frame). The 
 The vehicles (`veh_hauler`, `veh_speeder`, `veh_tender`, `veh_troop`) are merged by the app into one vertex-coloured
 body and one glow geometry each, so they still draw as two instanced meshes per type.
 `bkit.py` gained smooth shading on lofts and lathes, `ring` (hoops and collars) and `plate_zy` (fins and wings).
+
+## Division buildings
+
+`divisions.py` builds the eight division buildings (`div_intelligence`, `div_engineering`, `div_operations`,
+`div_research`, `div_security`, `div_bunker`, `div_quarters`, `div_transport`) in world coordinates, from the
+footprints in `frontend/src/world/layout.ts`. They share a small vocabulary defined at the top of the script
+(`block`, `ledge`, `band`, `fins`, `parapet`, `clutter`, `doorway`, `mast`).
+
+```
+%B% -b --factory-startup -P tools/blender/divisions.py -- --out frontend/public/models
+%B% -b --factory-startup -P tools/blender/divisions.py -- --out frontend/public/models --only security
+```
+`frontend/src/world/Structures.tsx` loads each through `Hero`, with the code-built building as the fallback.

@@ -168,6 +168,12 @@ New scenery (all simulated, all original geometry):
   3-5k each. Every aircraft and vehicle in the scene is now Blender-built; code-built versions remain as fallbacks.
 * Measured in the throttled preview on HIGH: 767 draw calls and 2.5 M triangles per frame (all passes). Not yet
   measured on a real GPU.
+* ✅ **The eight division buildings are Blender models** (`tools/blender/divisions.py`): Intelligence (battered
+  tiers, sensor tower, dish array), Engineering (finned hall, coolant tanks, stacks, roof crane), Operations
+  (hexagonal hall, glazed control drum), AI Labs (three ribbed domes with link corridors), Security (bastioned keep
+  with a twin-gun turret), Bunker (ribbed glacis, blast door, vent stacks), Quarters (balconied floors, stair
+  towers, medical wing) and Transport (five vehicle bays, gantry crane, container yard). 4k to 16k triangles each.
+* ✅ **Frame-rate readout** in the top bar (hover it for draw calls and triangles).
 * Not done: the duellists and the hooded leader are still built from simple shapes; no plume on the freighter's
   engine band or the destroyer.
 * Not verified: the marching troopers and the ship-landing dust were not seen on screen (the preview pane was
