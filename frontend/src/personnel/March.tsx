@@ -7,6 +7,7 @@
 import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { sim } from '../sim/world'
 import { MARCH_FRAME, TROOPERS, createMarchState, marchAt, type Marcher } from './marchPlan'
 
@@ -41,20 +42,108 @@ function limbs(m: Marcher, side: 1 | -1) {
 const PARTS = ['torso', 'belt', 'head', 'visor', 'armL', 'armR', 'legL', 'legR', 'rifle'] as const
 type Part = (typeof PARTS)[number]
 
+const WHITE = '#e8e6df'
+const SUIT = '#15161a'
+const BLUE = '#2f5fb0'
+const _c = new THREE.Color()
+const _e = new THREE.Euler()
+const _pm = new THREE.Matrix4()
+
+/** One coloured piece of a merged trooper part. */
+function piece(g: THREE.BufferGeometry, hex: string, p: [number, number, number] = [0, 0, 0], r: [number, number, number] = [0, 0, 0], sc: [number, number, number] = [1, 1, 1]) {
+  g.applyMatrix4(_pm.compose(new THREE.Vector3(...p), new THREE.Quaternion().setFromEuler(_e.set(...r)), new THREE.Vector3(...sc)))
+  _c.set(hex)
+  const n = g.getAttribute('position').count
+  const col = new Float32Array(n * 3)
+  for (let i = 0; i < n; i++) { col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  return g
+}
+const join = (parts: THREE.BufferGeometry[]) => {
+  const g = mergeGeometries(parts, false)!
+  for (const part of parts) part.dispose()
+  return g
+}
+const cyl = (rt: number, rb: number, h: number, seg = 12) => new THREE.CylinderGeometry(rt, rb, h, seg)
+const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d)
+const ball = (r: number, t0 = 0, tl = Math.PI) => new THREE.SphereGeometry(r, 14, 9, 0, Math.PI * 2, t0, tl)
+
+/**
+ * Clone-trooper armour, one merged and vertex-coloured geometry per moving part. The torso, belt, head and
+ * visor are placed facing the direction of march (local +Z = forward); limbs are unit-length (+Y towards the
+ * shoulder or hip) and get stretched between their joints, so along them local -Z is forward.
+ */
+function trooperGeometry() {
+  return {
+    torso: join([
+      piece(cyl(0.185, 0.16, 0.56), SUIT),
+      piece(ball(0.215, 0, Math.PI * 0.6), WHITE, [0, 0.07, 0.01], [0, 0, 0], [1, 0.85, 0.95]),   // chest plate
+      piece(cyl(0.188, 0.178, 0.15), WHITE, [0, -0.13, 0]),                                        // stomach plate
+      piece(box(0.25, 0.3, 0.1), WHITE, [0, 0.06, -0.17]),                                         // back pack
+      piece(box(0.14, 0.08, 0.03), SUIT, [0, 0.08, -0.225]),
+      piece(cyl(0.035, 0.035, 0.2, 8), SUIT, [0.07, 0.24, -0.19]),
+      piece(cyl(0.075, 0.085, 0.07), SUIT, [0, 0.3, 0]),                                           // neck seal
+      piece(ball(0.1, 0, Math.PI * 0.55), WHITE, [0.265, 0.2, 0], [0, 0, -0.25], [1, 1, 1.25]),    // shoulder bells
+      piece(ball(0.1, 0, Math.PI * 0.55), WHITE, [-0.265, 0.2, 0], [0, 0, 0.25], [1, 1, 1.25]),
+      piece(box(0.035, 0.012, 0.2), BLUE, [0.275, 0.3, 0], [0, 0, -0.25]),                         // unit stripes
+      piece(box(0.035, 0.012, 0.2), BLUE, [-0.275, 0.3, 0], [0, 0, 0.25]),
+      piece(box(0.05, 0.16, 0.014), BLUE, [0.09, 0.1, 0.2], [-0.12, 0.25, 0]),
+    ]),
+    belt: join([
+      piece(cyl(0.19, 0.19, 0.11), WHITE),
+      piece(box(0.1, 0.07, 0.03), SUIT, [0, 0, 0.19]),
+      piece(box(0.07, 0.09, 0.05), WHITE, [0.14, -0.01, 0.15], [0, 0.6, 0]),                       // pouches
+      piece(box(0.07, 0.09, 0.05), WHITE, [-0.14, -0.01, 0.15], [0, -0.6, 0]),
+      piece(cyl(0.17, 0.2, 0.2), BLUE, [0, -0.13, -0.02], [0, 0, 0], [1, 1, 0.9]),                 // kilt
+    ]),
+    head: join([
+      piece(ball(0.15, 0, Math.PI * 0.62), WHITE, [0, 0, 0]),                                      // dome
+      piece(cyl(0.142, 0.115, 0.13), WHITE, [0, -0.085, 0.005]),                                   // face and neck ring
+      piece(box(0.12, 0.09, 0.06), WHITE, [0, -0.1, 0.105], [-0.2, 0, 0]),                         // snout
+      piece(box(0.07, 0.03, 0.02), SUIT, [0, -0.115, 0.14], [-0.2, 0, 0]),                         // vocoder
+      piece(cyl(0.02, 0.02, 0.05, 6), SUIT, [0.055, -0.125, 0.115], [Math.PI / 2, 0, 0]),          // aerators
+      piece(cyl(0.02, 0.02, 0.05, 6), SUIT, [-0.055, -0.125, 0.115], [Math.PI / 2, 0, 0]),
+      piece(cyl(0.04, 0.04, 0.03, 8), WHITE, [0.148, -0.02, 0], [0, 0, Math.PI / 2]),              // ear caps
+      piece(cyl(0.04, 0.04, 0.03, 8), WHITE, [-0.148, -0.02, 0], [0, 0, Math.PI / 2]),
+      piece(box(0.035, 0.04, 0.3), BLUE, [0, 0.135, -0.015], [0.1, 0, 0]),                         // crest
+    ]),
+    // T-shaped visor
+    visor: join([
+      piece(box(0.21, 0.04, 0.06), SUIT),
+      piece(box(0.045, 0.1, 0.06), SUIT, [0, -0.06, 0]),
+    ]),
+    arm: join([
+      piece(cyl(0.05, 0.044, 1, 8), SUIT),
+      piece(cyl(0.07, 0.06, 0.34, 10), WHITE, [0, 0.22, 0]),                                       // upper-arm plate
+      piece(cyl(0.064, 0.05, 0.36, 10), WHITE, [0, -0.2, 0]),                                      // gauntlet
+      piece(ball(0.055), SUIT, [0, -0.47, 0], [0, 0, 0], [0.8, 1.5, 1]),                           // glove
+    ]),
+    leg: join([
+      piece(cyl(0.062, 0.052, 1, 8), SUIT),
+      piece(cyl(0.088, 0.072, 0.36, 10), WHITE, [0, 0.27, 0]),                                     // thigh plate
+      piece(ball(0.07), WHITE, [0, 0.03, -0.03], [0, 0, 0], [0.9, 0.9, 0.75]),                     // knee
+      piece(cyl(0.072, 0.06, 0.34, 10), WHITE, [0, -0.2, 0]),                                      // greave
+      piece(cyl(0.064, 0.074, 0.1, 10), WHITE, [0, -0.44, 0]),                                     // boot
+      piece(box(0.1, 0.06, 0.2), WHITE, [0, -0.47, -0.06]),
+      piece(box(0.105, 0.016, 0.21), SUIT, [0, -0.5, -0.06]),
+    ]),
+    // carbine: long axis Z
+    rifle: join([
+      piece(box(0.05, 0.09, 0.5), SUIT, [0, 0, -0.04]),
+      piece(cyl(0.017, 0.017, 0.34, 8), SUIT, [0, 0.015, 0.36], [Math.PI / 2, 0, 0]),
+      piece(cyl(0.026, 0.026, 0.07, 8), SUIT, [0, 0.015, 0.5], [Math.PI / 2, 0, 0]),
+      piece(box(0.04, 0.12, 0.07), SUIT, [0, -0.09, -0.12], [0.3, 0, 0]),
+      piece(box(0.045, 0.07, 0.2), SUIT, [0, -0.02, -0.36]),
+      piece(cyl(0.02, 0.02, 0.18, 8), SUIT, [0, 0.07, 0.02], [Math.PI / 2, 0, 0]),
+    ]),
+  }
+}
+
 function Troopers() {
   const refs = useRef<Partial<Record<Part, THREE.InstancedMesh | null>>>({})
-  const geo = useMemo(() => ({
-    torso: new THREE.CylinderGeometry(0.21, 0.17, 0.56, 8),
-    belt: new THREE.CylinderGeometry(0.185, 0.185, 0.16, 8),
-    head: new THREE.SphereGeometry(0.15, 10, 8),
-    visor: new THREE.BoxGeometry(0.2, 0.045, 0.06),
-    limb: new THREE.CylinderGeometry(0.065, 0.075, 1, 6),
-    rifle: new THREE.BoxGeometry(0.05, 0.09, 0.78),
-  }), [])
+  const geo = useMemo(trooperGeometry, [])
   const mat = useMemo(() => ({
-    armour: new THREE.MeshStandardMaterial({ color: '#e8e6df', roughness: 0.45, metalness: 0.1 }),
-    dark: new THREE.MeshStandardMaterial({ color: '#16171a', roughness: 0.7, metalness: 0.3 }),
-    blue: new THREE.MeshStandardMaterial({ color: '#2f5fb0', roughness: 0.6, metalness: 0.1 }),
+    armour: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.12 }),
   }), [])
 
   useFrame(() => {
@@ -97,14 +186,14 @@ function Troopers() {
   return (
     <>
       {inst('torso', geo.torso, mat.armour)}
-      {inst('belt', geo.belt, mat.blue)}
+      {inst('belt', geo.belt, mat.armour)}
       {inst('head', geo.head, mat.armour)}
-      {inst('visor', geo.visor, mat.dark)}
-      {inst('armL', geo.limb, mat.armour)}
-      {inst('armR', geo.limb, mat.armour)}
-      {inst('legL', geo.limb, mat.armour)}
-      {inst('legR', geo.limb, mat.armour)}
-      {inst('rifle', geo.rifle, mat.dark)}
+      {inst('visor', geo.visor, mat.armour)}
+      {inst('armL', geo.arm, mat.armour)}
+      {inst('armR', geo.arm, mat.armour)}
+      {inst('legL', geo.leg, mat.armour)}
+      {inst('legR', geo.leg, mat.armour)}
+      {inst('rifle', geo.rifle, mat.armour)}
     </>
   )
 }

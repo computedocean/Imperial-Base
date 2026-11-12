@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
+import { EnginePlume } from './Plume'
 import type { ThreeElements } from '@react-three/fiber'
 import {
   GeoBatch, bevelBox, chamferRect, cylX, cylZ, engineGlowOrangeMat, loft, mat, plateXZ,
@@ -23,6 +24,7 @@ export type XWingProps = ThreeElements['group'] & {
 const OPEN_ANGLE = THREE.MathUtils.degToRad(13)
 const WING_PIVOT_Y = 0.1
 const NACELLE = { x: 1.32, y: 0.44, zFront: -1.5, zRear: -5.9, r: 0.42 }
+const PLUME = [[NACELLE.x, NACELLE.y, NACELLE.zRear - 0.62]] as const
 const TIP_X = 5.72
 
 type Parts = Partial<Record<MatKey, THREE.BufferGeometry>>
@@ -160,6 +162,7 @@ export function XWing({ sFoil = 1, thrust = 0.5, ...props }: XWingProps) {
             <mesh key={k} geometry={geo.wing[k]} material={mat(k)} castShadow receiveShadow />
           ))}
           <mesh geometry={geo.glow} material={glowMat} position={[NACELLE.x, NACELLE.y, NACELLE.zRear - 0.6]} />
+          <EnginePlume at={PLUME} radius={NACELLE.r * 0.66} length={5} color="#ff6a4a" thrust={thrust} />
         </group>
       ))}
     </group>

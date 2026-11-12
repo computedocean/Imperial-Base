@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { EnginePlume } from './Plume'
 import { useFrame, type ThreeElements } from '@react-three/fiber'
 import {
   GeoBatch, bevelBox, chamferRect, cylX, cylZ, engineGlowBlueMat, loft, mat, plateZY,
@@ -38,6 +39,8 @@ const RAMP_LEN = 5.2
 const GEAR_TRAVEL = 2.15
 
 type Parts = Partial<Record<MatKey, THREE.BufferGeometry>>
+const PLUMES = [[-1.45, 4.0, -10.34], [1.45, 4.0, -10.34]] as const
+
 interface ShuttleGeo { body: Parts; wing: Parts; gear: Parts; ramp: Parts; glow: THREE.BufferGeometry; nav: THREE.BufferGeometry }
 
 let cache: ShuttleGeo | null = null
@@ -214,6 +217,7 @@ export function Shuttle({ wingFold = 1, gear = 1, ramp = 0, thrust = 0.3, navLig
     <group {...props}>
       <PartMeshes parts={geo.body} />
       <mesh geometry={geo.glow} material={glowMat} />
+      <EnginePlume at={PLUMES} radius={0.84} length={10} color="#5a96ff" thrust={thrust} />
       {/* wings: +X side and mirrored -X side */}
       {[1, -1].map((sx) => (
         <group key={sx} position={[sx * HINGE_X, HINGE_Y, 0]} rotation={[0, 0, -sx * angle]} scale={[sx, 1, 1]}>

@@ -27,12 +27,12 @@ export interface TodPreset {
 
 export const TOD: Record<TimeOfDay, TodPreset> = {
   golden: {
-    sunDir: new THREE.Vector3(-0.62, 0.3, -0.74).normalize(),
-    sunColor: '#ffdcb6', sunIntensity: 3.3,
-    hemiSky: '#b2c4da', hemiGround: '#6e5845', hemiIntensity: 0.8, ambient: 0.06,
-    fog: '#c99d78', fogDensity: 0.000165, exposure: 1.08, envIntensity: 0.75,
-    sky: { zenith: '#21334f', mid: '#8c7a6c', horizon: '#ebab76', ground: '#c49a78', glow: '#ffb86b', glowStrength: 0.6, disc: 6, stars: 0, cloud: 0.12 },
-    windows: 1.4, lampPools: 0, saturation: -0.04, contrast: 0.1, bloom: 0.5,
+    sunDir: new THREE.Vector3(-0.62, 0.4, -0.74).normalize(),
+    sunColor: '#ffd9ae', sunIntensity: 3.5,
+    hemiSky: '#b4cdee', hemiGround: '#7a6048', hemiIntensity: 0.9, ambient: 0.06,
+    fog: '#d3b192', fogDensity: 0.00012, exposure: 1.1, envIntensity: 0.85,
+    sky: { zenith: '#234a82', mid: '#8fa2b4', horizon: '#f2bd8c', ground: '#cda57e', glow: '#ffbe76', glowStrength: 0.55, disc: 8, stars: 0, cloud: 0.2 },
+    windows: 1.4, lampPools: 0, saturation: 0.07, contrast: 0.13, bloom: 0.55,
   },
   dusk: {
     sunDir: new THREE.Vector3(-0.66, 0.07, -0.75).normalize(),

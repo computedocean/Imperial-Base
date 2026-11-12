@@ -16,6 +16,7 @@ import { QUALITY, useStore } from './state/store'
 import { Sky } from './world/Sky'
 import { Apron } from './world/Apron'
 import { FuelDump } from './world/FuelDump'
+import { GroundFx } from './world/GroundFx'
 import { Temple } from './world/Temple'
 import { WorldRendering } from './world/Rendering'
 import { Structures } from './world/Structures'
@@ -94,6 +95,7 @@ export function Scene() {
         <Settlements terrainSegments={q.terrainSegments} />
         <Rocks count={quality === 'low' ? 150 : 450} />
         <Dust count={q.dust} />
+        {q.dust > 0 && <GroundFx />}
         <RoadProps />
       </group>
       <VehicleLayer visible={!sealed} />

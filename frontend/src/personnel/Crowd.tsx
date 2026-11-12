@@ -1,6 +1,6 @@
 // IMPERIAL BASE — instanced crowd renderer.
 //
-// One InstancedMesh per body part (13 draw calls for the whole crowd, regardless
+// One InstancedMesh per body part (15 draw calls for the whole crowd, regardless
 // of head-count). Every part geometry carries per-vertex "tone weights" in its
 // colour attribute (r,g,b = channels 0..2, remainder = channel 3); the shader
 // mixes four per-instance colours with those weights, so one shared geometry
@@ -189,98 +189,138 @@ function merged(parts: BufferGeometry[]): BufferGeometry {
 export type CrowdMeshKey =
   | 'pelvis' | 'torso' | 'head' | 'upperArm' | 'forearm' | 'thigh' | 'shin'
   | 'cap' | 'trooperHelmet' | 'pilotHelmet' | 'rifle' | 'coat'
+  | 'armour' | 'pauldron' | 'greave'
 
-/** Builds the shared low-poly part geometries (local frames match rig.ts pivots). */
+/** Radial segments of limbs and bodies: round enough to read as cloth and armour up close. */
+const S = 12
+
+/** Builds the shared part geometries (local frames match rig.ts pivots). */
 export function createPartGeometries(): Record<CrowdMeshKey, BufferGeometry> {
   const hc = BODY.headCenter
   return {
     // pivot = hip joints line. channels: trousers, belt, buckle, under
     pelvis: merged([
-      piece(cyl(0.162, 0.13, 0.22, 6, false, O6), 0, [0, 0.0, 0], [0, 0, 0], [1, 1, 0.72]),
-      piece(cyl(0.168, 0.168, 0.055, 6, true, O6), 1, [0, 0.1, 0], [0, 0, 0], [1, 1, 0.74]),
-      piece(quad(0.07, 0.045), 2, [0, 0.1, 0.112]),
+      piece(cyl(0.162, 0.13, 0.22, S), 0, [0, 0.0, 0], [0, 0, 0], [1, 1, 0.72]),
+      piece(cyl(0.168, 0.168, 0.055, S, true), 1, [0, 0.1, 0], [0, 0, 0], [1, 1, 0.74]),
+      piece(box(0.07, 0.045, 0.02), 2, [0, 0.1, 0.122]),
     ]),
     // pivot = waist. channels: tunic, under, plaque, trim
     torso: merged([
-      piece(cyl(0.152, 0.15, 0.2, 6, true, O6), 1, [0, 0.1, 0], [0, 0, 0], [1, 1, 0.72]),
-      piece(cyl(0.198, 0.156, 0.25, 6, true, O6), 0, [0, 0.3, 0.004], [0, 0, 0], [1, 1, 0.66]),
-      piece(cyl(0.13, 0.198, 0.045, 6, false, O6), 0, [0, 0.446, 0.004], [0, 0, 0], [1, 1, 0.66]),
+      piece(cyl(0.152, 0.15, 0.2, S, true), 1, [0, 0.1, 0], [0, 0, 0], [1, 1, 0.72]),
+      piece(cyl(0.198, 0.156, 0.25, S, true), 0, [0, 0.3, 0.004], [0, 0, 0], [1, 1, 0.66]),
+      piece(cyl(0.13, 0.198, 0.045, S, false), 0, [0, 0.446, 0.004], [0, 0, 0], [1, 1, 0.66]),
       piece(box(0.125, 0.05, 0.16), 3, [0.16, 0.432, 0], [0, 0, -0.28]),
       piece(box(0.125, 0.05, 0.16), 3, [-0.16, 0.432, 0], [0, 0, 0.28]),
-      piece(cyl(0.062, 0.07, 0.05, 6, true), 1, [0, 0.468, 0.005]),
-      piece(quad(0.072, 0.042), 2, [0.088, 0.355, 0.112]),
-      piece(quad(0.27, 0.022), 3, [0, 0.27, 0.105]),
+      piece(cyl(0.062, 0.07, 0.05, S, true), 1, [0, 0.468, 0.005]),
+      piece(box(0.072, 0.042, 0.014), 2, [0.088, 0.355, 0.114], [0, 0.36, 0]),
+      piece(cyl(0.178, 0.174, 0.022, S, true), 3, [0, 0.27, 0.004], [0, 0, 0], [1, 1, 0.66]),
     ]),
     // pivot = neck base. channels: skin, hair, brow, skin
     head: merged([
-      piece(cyl(0.05, 0.058, 0.11, 6, true), 0, [0, 0.045, 0.005]),
-      piece(sph(0.1, 7, 5), 0, [0, hc, 0.012], [0, 0, 0], [0.79, 1.17, 0.98]),
-      piece(sph(0.104, 7, 2, 0, Math.PI * 0.42), 1, [0, hc + 0.006, -0.004], [-0.5, 0, 0], [0.8, 1.17, 1.0]),
-      piece(quad(0.03, 0.012), 2, [0.034, hc + 0.018, 0.1]),
-      piece(quad(0.03, 0.012), 2, [-0.034, hc + 0.018, 0.1]),
+      piece(cyl(0.05, 0.058, 0.11, 8, true), 0, [0, 0.045, 0.005]),
+      piece(sph(0.1, 14, 10), 0, [0, hc, 0.012], [0, 0, 0], [0.79, 1.17, 0.98]),
+      piece(sph(0.104, 14, 4, 0, Math.PI * 0.42), 1, [0, hc + 0.006, -0.004], [-0.5, 0, 0], [0.8, 1.17, 1.0]),
+      piece(box(0.03, 0.012, 0.012), 2, [0.034, hc + 0.018, 0.1], [0, 0.32, 0]),
+      piece(box(0.03, 0.012, 0.012), 2, [-0.034, hc + 0.018, 0.1], [0, -0.32, 0]),
       piece(box(0.022, 0.045, 0.03), 0, [0, hc - 0.008, 0.105], [-0.15, 0, 0]),
+      piece(box(0.014, 0.04, 0.026), 0, [0.079, hc - 0.002, 0.004]),
+      piece(box(0.014, 0.04, 0.026), 0, [-0.079, hc - 0.002, 0.004]),
     ]),
     // pivot = shoulder. channels: sleeve, under, trim, sleeve
     upperArm: merged([
-      piece(cyl(0.058, 0.047, 0.31, 6), 0, [0, -0.135, 0]),
-      piece(cyl(0.049, 0.047, 0.05, 6, true), 1, [0, -0.27, 0]),
+      piece(sph(0.06, 10, 6), 0, [0, -0.008, 0]),
+      piece(cyl(0.058, 0.047, 0.31, 10), 0, [0, -0.135, 0]),
+      piece(cyl(0.049, 0.047, 0.05, 10, true), 1, [0, -0.27, 0]),
     ]),
     // pivot = elbow. channels: sleeve, gloves, trim, under
     forearm: merged([
-      piece(cyl(0.048, 0.037, 0.27, 6), 0, [0, -0.115, 0]),
-      piece(cyl(0.042, 0.04, 0.045, 6, true), 1, [0, -0.235, 0]),
-      piece(box(0.034, 0.088, 0.078), 1, [0, -0.3, 0.004]),
+      piece(cyl(0.048, 0.037, 0.27, 10), 0, [0, -0.115, 0]),
+      piece(cyl(0.042, 0.04, 0.045, 10, true), 1, [0, -0.235, 0]),
+      piece(sph(0.046, 8, 6), 1, [0, -0.3, 0.004], [0, 0, 0], [0.45, 1.0, 0.85]),
+      piece(box(0.016, 0.04, 0.02), 1, [0, -0.285, 0.045], [0.5, 0, 0]),
     ]),
     // pivot = hip joint. channels: trousers, knee, trim, trousers
     thigh: merged([
-      piece(cyl(0.082, 0.06, 0.47, 6, true), 0, [0, -0.21, 0]),
-      piece(sph(0.054, 6, 3), 1, [0, -BODY.thigh, 0.006], [0, 0, 0], [0.95, 1, 1]),
+      piece(cyl(0.082, 0.06, 0.47, 10, true), 0, [0, -0.21, 0]),
+      piece(sph(0.054, 10, 6), 1, [0, -BODY.thigh, 0.006], [0, 0, 0], [0.95, 1, 1]),
     ]),
     // pivot = knee. channels: trousers, boots, sole, upperShin
     shin: merged([
-      piece(cyl(0.058, 0.05, 0.22, 6, true), 3, [0, -0.1, 0]),
-      piece(cyl(0.054, 0.05, 0.25, 6, true), 1, [0, -0.33, 0]),
-      piece(box(0.094, 0.07, 0.24), 1, [0, -0.46, 0.045]),
-      piece(box(0.1, 0.022, 0.25), 2, [0, -0.493, 0.045]),
+      piece(cyl(0.058, 0.05, 0.22, 10, true), 3, [0, -0.1, 0]),
+      piece(cyl(0.054, 0.05, 0.25, 10, true), 1, [0, -0.33, 0]),
+      piece(box(0.094, 0.07, 0.2), 1, [0, -0.46, 0.025]),
+      piece(sph(0.047, 8, 5), 1, [0, -0.46, 0.125], [0, 0, 0], [1, 0.74, 1.2]),
+      piece(box(0.1, 0.022, 0.26), 2, [0, -0.493, 0.05]),
     ]),
     // ---- headgear (pivot = neck base, same as head)
     cap: merged([
-      piece(cyl(0.112, 0.1, 0.075, 8), 0, [0, hc + 0.105, 0.0], [-0.08, 0, 0], [1, 1, 1.12]),
-      piece(cyl(0.102, 0.102, 0.022, 8, true), 1, [0, hc + 0.075, 0.0], [-0.08, 0, 0], [1, 1, 1.12]),
+      piece(cyl(0.112, 0.1, 0.075, S), 0, [0, hc + 0.105, 0.0], [-0.08, 0, 0], [1, 1, 1.12]),
+      piece(cyl(0.102, 0.102, 0.022, S, true), 1, [0, hc + 0.075, 0.0], [-0.08, 0, 0], [1, 1, 1.12]),
       piece(box(0.16, 0.012, 0.065), 1, [0, hc + 0.066, 0.11], [0.22, 0, 0]),
-      piece(quad(0.035, 0.025), 2, [0, hc + 0.105, 0.124], [-0.08, 0, 0]),
+      piece(box(0.035, 0.025, 0.01), 2, [0, hc + 0.105, 0.124], [-0.08, 0, 0]),
     ]),
     // channels: helmet, visor, helmetTrim, hat
     trooperHelmet: merged([
-      piece(sph(0.132, 8, 5, 0, Math.PI * 0.62), 0, [0, hc + 0.02, -0.005], [0, 0, 0], [0.95, 1.0, 1.06]),
-      piece(cyl(0.122, 0.13, 0.06, 8, true), 0, [0, hc - 0.025, -0.01], [0, 0, 0], [0.95, 1, 1.0]),
+      piece(sph(0.132, S, 7, 0, Math.PI * 0.62), 0, [0, hc + 0.02, -0.005], [0, 0, 0], [0.95, 1.0, 1.06]),
+      piece(cyl(0.122, 0.13, 0.06, S, true), 0, [0, hc - 0.025, -0.01], [0, 0, 0], [0.95, 1, 1.0]),
       piece(box(0.13, 0.12, 0.06), 0, [0, hc - 0.045, 0.1], [-0.12, 0, 0]),
-      piece(box(0.124, 0.036, 0.02), 1, [0, hc + 0.025, 0.133]),
-      piece(quad(0.05, 0.04), 1, [0, hc - 0.07, 0.1335], [-0.12, 0, 0]),
-      piece(box(0.025, 0.06, 0.08), 2, [0.124, hc - 0.01, 0.0]),
-      piece(box(0.025, 0.06, 0.08), 2, [-0.124, hc - 0.01, 0.0]),
+      // visor: a brow band and two angled lenses
+      piece(box(0.128, 0.03, 0.02), 1, [0, hc + 0.03, 0.137]),
+      piece(box(0.05, 0.034, 0.02), 1, [0.034, hc + 0.004, 0.136], [0, 0, -0.35]),
+      piece(box(0.05, 0.034, 0.02), 1, [-0.034, hc + 0.004, 0.136], [0, 0, 0.35]),
+      // vocoder grille, cheek tubes, ear caps, a ridge over the crown
+      piece(box(0.05, 0.04, 0.012), 1, [0, hc - 0.07, 0.1335], [-0.12, 0, 0]),
+      piece(cyl(0.016, 0.016, 0.05, 6), 2, [0.05, hc - 0.085, 0.118], [Math.PI / 2 - 0.12, 0, 0]),
+      piece(cyl(0.016, 0.016, 0.05, 6), 2, [-0.05, hc - 0.085, 0.118], [Math.PI / 2 - 0.12, 0, 0]),
+      piece(cyl(0.034, 0.034, 0.024, 8), 2, [0.125, hc - 0.01, 0.0], [0, 0, Math.PI / 2]),
+      piece(cyl(0.034, 0.034, 0.024, 8), 2, [-0.125, hc - 0.01, 0.0], [0, 0, Math.PI / 2]),
+      piece(box(0.03, 0.02, 0.2), 0, [0, hc + 0.148, -0.02], [0.12, 0, 0]),
     ]),
     pilotHelmet: merged([
-      piece(sph(0.145, 8, 5, 0, Math.PI * 0.66), 0, [0, hc + 0.02, -0.012], [0, 0, 0], [1.0, 1.0, 1.04]),
-      piece(cyl(0.138, 0.142, 0.07, 8, true), 0, [0, hc - 0.03, -0.015]),
+      piece(sph(0.145, S, 7, 0, Math.PI * 0.66), 0, [0, hc + 0.02, -0.012], [0, 0, 0], [1.0, 1.0, 1.04]),
+      piece(cyl(0.138, 0.142, 0.07, S, true), 0, [0, hc - 0.03, -0.015]),
       piece(box(0.17, 0.07, 0.04), 1, [0, hc + 0.0, 0.122], [-0.05, 0, 0]),
       piece(box(0.07, 0.06, 0.06), 2, [0, hc - 0.085, 0.11], [-0.2, 0, 0]),
-      piece(cyl(0.012, 0.012, 0.2, 5, true), 2, [0.04, hc - 0.18, 0.12], [0.35, 0, 0.12]),
-      piece(cyl(0.012, 0.012, 0.2, 5, true), 2, [-0.04, hc - 0.18, 0.12], [0.35, 0, -0.12]),
-      piece(cyl(0.03, 0.03, 0.02, 6), 3, [0.147, hc, 0.0], [0, 0, Math.PI / 2]),
-      piece(cyl(0.03, 0.03, 0.02, 6), 3, [-0.147, hc, 0.0], [0, 0, Math.PI / 2]),
+      piece(cyl(0.012, 0.012, 0.2, 6, true), 2, [0.04, hc - 0.18, 0.12], [0.35, 0, 0.12]),
+      piece(cyl(0.012, 0.012, 0.2, 6, true), 2, [-0.04, hc - 0.18, 0.12], [0.35, 0, -0.12]),
+      piece(cyl(0.03, 0.03, 0.02, 8), 3, [0.147, hc, 0.0], [0, 0, Math.PI / 2]),
+      piece(cyl(0.03, 0.03, 0.02, 8), 3, [-0.147, hc, 0.0], [0, 0, Math.PI / 2]),
     ]),
     // rifle, long axis +Y (muzzle). channels: gun, gunDark, gunDark, gun
     rifle: merged([
       piece(box(0.05, 0.3, 0.06), 0, [0, 0, 0]),
-      piece(cyl(0.016, 0.016, 0.2, 6, true), 1, [0, 0.25, 0.005]),
+      piece(cyl(0.016, 0.016, 0.2, 8, true), 1, [0, 0.25, 0.005]),
+      piece(cyl(0.022, 0.022, 0.05, 8), 0, [0, 0.36, 0.005]),
       piece(box(0.035, 0.15, 0.04), 1, [0, -0.2, 0.0]),
       piece(box(0.06, 0.03, 0.03), 1, [-0.045, -0.07, 0], [0, 0, 0.5]),
       piece(box(0.07, 0.03, 0.025), 2, [-0.05, 0.05, 0], [0, 0, 0]),
+      piece(cyl(0.014, 0.014, 0.16, 6), 2, [0.038, 0.04, 0]),
     ]),
     // lab coat skirt (pelvis frame). channels: coat, coat, trim, coat
     coat: merged([
-      piece(cyl(0.172, 0.215, 0.44, 6, true, O6), 0, [0, -0.12, -0.005], [0, 0, 0], [1, 1, 0.74]),
+      piece(cyl(0.172, 0.215, 0.44, S, true), 0, [0, -0.12, -0.005], [0, 0, 0], [1, 1, 0.74]),
+    ]),
+    // ---- trooper armour plates, worn over the body
+    // torso frame. channels: tunic (plate), under, plaque, trim
+    armour: merged([
+      // chest plate, stomach plate, back plate with a pack, belt boxes
+      piece(sph(0.2, S, 6, 0, Math.PI * 0.62), 0, [0, 0.3, 0.012], [0, 0, 0], [1.04, 0.86, 0.72]),
+      piece(cyl(0.166, 0.16, 0.1, S, true), 0, [0, 0.13, 0.004], [0, 0, 0], [1, 1, 0.76]),
+      piece(box(0.2, 0.25, 0.06), 0, [0, 0.31, -0.135]),
+      piece(box(0.12, 0.06, 0.02), 1, [0, 0.3, -0.167]),
+      piece(box(0.05, 0.05, 0.03), 0, [0.1, 0.035, 0.115]),
+      piece(box(0.05, 0.05, 0.03), 0, [-0.1, 0.035, 0.115]),
+      piece(box(0.1, 0.03, 0.014), 1, [0, 0.215, 0.13]),
+    ]),
+    // upper-arm frame. channels: sleeve (plate), under, trim, sleeve
+    pauldron: merged([
+      piece(sph(0.078, 10, 5, 0, Math.PI * 0.55), 0, [0, -0.012, 0], [0, 0, 0], [1.05, 1, 1.08]),
+      piece(cyl(0.064, 0.056, 0.15, 10, true), 0, [0, -0.17, 0]),
+    ]),
+    // shin frame. channels: trousers (plate), boots, sole, upperShin
+    greave: merged([
+      piece(sph(0.062, 8, 5), 0, [0, -0.005, 0.03], [0, 0, 0], [0.9, 1.1, 0.7]),
+      piece(cyl(0.066, 0.058, 0.3, 10, true), 0, [0, -0.2, 0.004]),
     ]),
   }
 }
@@ -299,6 +339,9 @@ export const MESH_CHANNELS: Record<CrowdMeshKey, [PaletteKey, PaletteKey, Palett
   pilotHelmet: ['hat', 'visor', 'helmetTrim', 'helmetTrim'],
   rifle: ['gun', 'gunDark', 'gunDark', 'gun'],
   coat: ['coat', 'coat', 'trim', 'coat'],
+  armour: ['tunic', 'under', 'plaque', 'trim'],
+  pauldron: ['sleeve', 'under', 'trim', 'sleeve'],
+  greave: ['trousers', 'boots', 'sole', 'upperShin'],
 }
 
 type Slot =
@@ -326,6 +369,9 @@ const MESH_SPECS: MeshSpec[] = [
   { key: 'pilotHelmet', slot: { kind: 'part', part: PART.helmet }, only: ['pilot'] },
   { key: 'rifle', slot: { kind: 'rifle' }, only: ['trooper'] },
   { key: 'coat', slot: { kind: 'part', part: PART.pelvis }, only: ['scientist'] },
+  { key: 'armour', slot: { kind: 'part', part: PART.torso }, only: ['trooper'] },
+  { key: 'pauldron', slot: { kind: 'pair', left: PART.upperArmL, right: PART.upperArmR }, only: ['trooper'] },
+  { key: 'greave', slot: { kind: 'pair', left: PART.shinL, right: PART.shinR }, only: ['trooper'] },
 ]
 
 export const RIFLE_MATRIX = new Matrix4().compose(

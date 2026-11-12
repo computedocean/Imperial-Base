@@ -9,6 +9,8 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeElements } from '@react-three/fiber'
+import { Baked, shipBind } from './Baked'
+import { EnginePlume } from './Plume'
 import { GeoBatch, bevelBox, chamferRect, cylZ, engineGlowOrangeMat, loft, mat, plateXZ, type MatKey } from './materials'
 
 export type GunshipProps = ThreeElements['group'] & {
@@ -21,8 +23,10 @@ export type GunshipProps = ThreeElements['group'] & {
 const GROUND = 3.4
 const POD = { x: 6.7, y: 0.5, r: 1.95, zFront: 2.4, zRear: -7.2 }
 
+const PLUMES = [[POD.x, POD.y, POD.zRear - 1.45], [-POD.x, POD.y, POD.zRear - 1.45]] as const
+
 type Parts = Partial<Record<MatKey, THREE.BufferGeometry>>
-let cache: { body: Parts; gear: Parts; glow: THREE.BufferGeometry } | null = null
+let cache: { body: Parts; lights: Parts; gear: Parts; glow: THREE.BufferGeometry } | null = null
 
 function buildGunship() {
   if (cache) return cache
@@ -80,9 +84,12 @@ function buildGunship() {
   // stern: ramp door and running lights
   b.add('gun', bevelBox(3.0, 2.5, 0.3, 0.08), { p: [0, 0, -11.45] })
   b.add('dark', bevelBox(2.3, 1.9, 0.2, 0.05), { p: [0, -0.05, -11.6] })
-  b.add('navRed', new THREE.SphereGeometry(0.16, 8, 6), { p: [0, 2.95, -8.5] })
-  b.add('navWhite', new THREE.SphereGeometry(0.14, 8, 6), { p: [0, -2.35, 5.5] })
   const body = b.build()
+  // running lights (kept out of the hull so the Blender-built hull can replace it)
+  const l = new GeoBatch(4)
+  l.add('navRed', new THREE.SphereGeometry(0.16, 8, 6), { p: [0, 2.95, -8.5] })
+  l.add('navWhite', new THREE.SphereGeometry(0.14, 8, 6), { p: [0, -2.35, 5.5] })
+  const lights = l.build()
 
   // landing gear (origin = model origin; it slides up into the hull when retracted)
   const g = new GeoBatch(3)
@@ -97,7 +104,7 @@ function buildGunship() {
 
   const glow = new THREE.CircleGeometry(POD.r * 0.7, 18)
   glow.rotateY(Math.PI)
-  cache = { body, gear, glow }
+  cache = { body, lights, gear, glow }
   return cache
 }
 
@@ -108,13 +115,21 @@ export function Gunship({ gear = 1, thrust = 0, ...props }: GunshipProps) {
   const glowMat = useMemo(() => engineGlowOrangeMat().clone(), [])
   useEffect(() => () => glowMat.dispose(), [glowMat])
   glowMat.emissiveIntensity = 0.1 + clamp01(thrust) * 3.6
+  const bind = useMemo(() => shipBind(['hull', 'gun', 'dark', 'glass', 'stripe']), [])
   const k = clamp01(gear)
   return (
     <group {...props}>
-      {(Object.keys(geo.body) as MatKey[]).map((key) => (
-        <mesh key={key} geometry={geo.body[key]} material={mat(key)} castShadow receiveShadow />
-      ))}
+      {/* hull: the Blender-built model (tools/blender/gunship.py); the code-built one is the fallback */}
+      <Baked name="gunship" bind={bind} fallback={
+        <>
+          {(Object.keys(geo.body) as MatKey[]).map((key) => (
+            <mesh key={key} geometry={geo.body[key]} material={mat(key)} castShadow receiveShadow />
+          ))}
+        </>
+      } />
+      {(Object.keys(geo.lights) as MatKey[]).map((key) => <mesh key={key} geometry={geo.lights[key]} material={mat(key)} />)}
       {thrust > 0.02 && [1, -1].map((sx) => <mesh key={sx} geometry={geo.glow} material={glowMat} position={[sx * POD.x, POD.y, POD.zRear - 1.42]} />)}
+      <EnginePlume at={PLUMES} radius={POD.r * 0.68} length={12} color="#ff7038" thrust={thrust} />
       <group visible={k > 0.02} position={[0, (1 - k) * 1.9, 0]}>
         {(Object.keys(geo.gear) as MatKey[]).map((key) => (
           <mesh key={key} geometry={geo.gear[key]} material={mat(key)} castShadow />

@@ -27,3 +27,19 @@ set B="C:\Program Files\Blender Foundation\Blender 5.3\blender.exe"
 `--size 1024 --samples 12` gives a quick draft in under half a minute. `bkit.py` gained `lathe_z`, `sphere` and
 `hull_z` for these (bodies of revolution and hulls lofted along the ship's length).
 
+
+## Gunship, walker and sail barge
+
+`gunship.py`, `walker.py` and `sailbarge.py` follow the same pattern. The walker is posed in code, so it is exported
+as five GLBs (`walker_body`, `walker_head`, `walker_thigh`, `walker_shin`, `walker_foot`), each in the frame of the
+code-built part it replaces and each with its own shadow map. The barge adds a `lamp` material for lanterns and lit
+windows.
+
+```
+%B% -b --factory-startup -P tools/blender/gunship.py   -- --out frontend/public/models --samples 48 --size 2048
+%B% -b --factory-startup -P tools/blender/walker.py    -- --out frontend/public/models --samples 48 --size 2048
+%B% -b --factory-startup -P tools/blender/sailbarge.py -- --out frontend/public/models --samples 48 --size 2048
+```
+`bkit.py` gained `lathe` (solid of revolution about any axis; the profile may double back for intake lips and
+nozzles), `tube` (round strut between two points) and `sheet` (thin skin through a grid of points, for sails).
+Check the result in the app at `?preview=aircraft&focus=gunship` or `focus=barge`.

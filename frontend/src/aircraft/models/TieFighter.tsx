@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
+import { EnginePlume } from './Plume'
 import type { ThreeElements } from '@react-three/fiber'
 import { GeoBatch, bevelBox, cylX, cylZ, engineGlowRedMat, loft, mat, plateZY, type MatKey, type V2 } from './materials'
 
@@ -15,6 +16,7 @@ export type TieFighterProps = ThreeElements['group'] & {
 }
 
 const POD_R = 1.22
+const PLUMES = [[-0.27, -0.05, -POD_R - 0.13], [0.27, -0.05, -POD_R - 0.13]] as const
 const WING_X = 3.4 // wing plane offset from centre
 const HEX_R = 3.1 // circumradius => ~6.2 m tall, ~5.4 m long
 const VIEW_A = 0.6 // half-angle of the front viewport opening (rad)
@@ -140,6 +142,7 @@ export function TieFighter({ thrust = 0.5, ...props }: TieFighterProps) {
         <mesh key={k} geometry={geo.parts[k]} material={mat(k)} castShadow receiveShadow />
       ))}
       <mesh geometry={geo.glow} material={glowMat} />
+      <EnginePlume at={PLUMES} radius={0.2} length={2.6} color="#ff4a34" thrust={thrust} />
     </group>
   )
 }

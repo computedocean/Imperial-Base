@@ -1,6 +1,6 @@
 /**
  * Dev preview: ?preview=aircraft
- * Optional URL params for screenshots: focus=all|shuttle|tie|xwing,
+ * Optional URL params for screenshots: focus=all|shuttle|tie|xwing|freighter|gunship|barge,
  * wingFold, gear, ramp, sFoil, thrust (0..1), az (deg), el (deg), dist (m),
  * only=shuttle|tie|xwing (single model), shadows=0.
  */
@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { Freighter } from '../aircraft/models/Freighter'
+import { Gunship } from '../aircraft/models/Gunship'
+import { SailBarge } from '../aircraft/models/SailBarge'
 import { Shuttle } from '../aircraft/models/Shuttle'
 import { TieFighter } from '../aircraft/models/TieFighter'
 import { XWing } from '../aircraft/models/XWing'
@@ -24,6 +26,8 @@ const FOCI: Record<string, { target: [number, number, number]; dist: number }> =
   tie: { target: [2, 4.2, 0], dist: 13 },
   xwing: { target: [18, 3, 0], dist: 17 },
   freighter: { target: [0, 4.3, 40], dist: 46 },
+  gunship: { target: [0, 3.6, -40], dist: 30 },
+  barge: { target: [60, 8, -40], dist: 46 },
 }
 
 function Stats({ out }: { out: React.RefObject<HTMLDivElement | null> }) {
@@ -80,6 +84,9 @@ export default function AircraftPreview() {
         {show('tie') && <TieFighter position={[2, 4.2, 0]} thrust={v.thrust} />}
         {show('xwing') && <XWing position={[18, 3, 0]} sFoil={v.sFoil} thrust={v.thrust} />}
         {show('freighter') && <Freighter position={[0, 4.3, 40]} gear={v.gear} thrust={v.thrust} />}
+
+        {show('gunship') && <Gunship position={[0, 3.4, -40]} gear={v.gear} thrust={v.thrust} />}
+        {show('barge') && <SailBarge position={[60, 2, -40]} />}
 
         <OrbitControls target={t} makeDefault />
         <Stats out={stats} />

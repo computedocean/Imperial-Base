@@ -165,6 +165,31 @@ class Model:
         """Loft along Z through chamfered sections [(z, width, y_bottom, y_top, chamfer), ...] in increasing z."""
         self.loft(mat, [list(reversed(self.ring_xy(*s))) for s in sections], bevel=bevel)
 
+    def lathe(self, mat, origin, direction, profile, seg=16, bevel=0.0):
+        """Solid of revolution about any axis. profile: [(distance along the axis, radius), ...]; it may double
+        back on itself (intake lips, hollow nozzles). The first and last rings are capped."""
+        o, ax = Vector(origin), Vector(direction).normalized()
+        up = Vector((0, 1, 0)) if abs(ax.y) < 0.95 else Vector((1, 0, 0))
+        u = ax.cross(up).normalized()
+        v = ax.cross(u).normalized()
+        rings = [[tuple(o + ax * t + (u * math.cos(2 * math.pi * i / seg) + v * math.sin(2 * math.pi * i / seg)) * max(r, 0.01))
+                  for i in range(seg)] for t, r in profile]
+        self.loft(mat, rings, bevel=bevel)
+
+    def tube(self, mat, p0, p1, r, r1=None, seg=10, bevel=0.0):
+        """Round strut between two three.js points (r at p0, r1 at p1)."""
+        d = Vector(p1) - Vector(p0)
+        self.lathe(mat, p0, d, [(0.0, r), (d.length, r if r1 is None else r1)], seg=seg, bevel=bevel)
+
+    def sheet(self, mat, grid, thickness=0.06):
+        """Thin closed skin through a grid of three.js points (rows of equal length), e.g. a sail."""
+        rings = []
+        for row in grid:
+            top = [(x, y + thickness / 2, z) for x, y, z in row]
+            bot = [(x, y - thickness / 2, z) for x, y, z in reversed(row)]
+            rings.append(top + bot)
+        self.loft(mat, rings)
+
     # ------------------------------------------------------------------ finish
     def to_object(self):
         me = bpy.data.meshes.new(self.name)

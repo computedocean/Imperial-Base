@@ -8,6 +8,7 @@ import { useGLTF, useTexture } from '@react-three/drei'
 import { Component, Suspense, useMemo, type ReactNode } from 'react'
 import * as THREE from 'three'
 import { useStore } from '../../state/store'
+import { mat, type MatKey } from './materials'
 
 const url = (f: string) => `${import.meta.env.BASE_URL}models/${f}`
 
@@ -34,6 +35,19 @@ export function withBakedAO<T extends THREE.Material>(material: T, ao: THREE.Tex
 }
 
 export type Bind = (name: string) => { material: THREE.Material; ao?: boolean; shadows?: boolean }
+
+/**
+ * Binds a model's material names to this caller's OWN copies of the shared aircraft materials (the baked
+ * shadow map is attached to them, so they cannot be shared between models). Unknown names fall back to `gun`.
+ */
+export function shipBind(keys: MatKey[], noAO: MatKey[] = ['glass', 'navRed', 'navWhite']): Bind {
+  const own = new Map<MatKey, THREE.Material>()
+  return (name) => {
+    const key = (keys.includes(name as MatKey) ? name : 'gun') as MatKey
+    if (!own.has(key)) own.set(key, mat(key).clone())
+    return { material: own.get(key)!, ao: !noAO.includes(key) }
+  }
+}
 
 function Model({ name, bind }: { name: string; bind: Bind }) {
   const gltf = useGLTF(url(`${name}.glb`))

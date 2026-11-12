@@ -147,8 +147,23 @@ New scenery (all simulated, all original geometry):
 * ✅ **Temple stonework** (`world/Temple.tsx`, textures in `world/surface.ts`): coursed stone with relief, buttresses,
   recessed lamp-lit windows, ribbed tiers, pediment, lit spire galleries.
 * ✅ Planked hull on the sail barge.
-* Not done: Blender versions of the gunship, walker and sail barge; armour detail on the clone troopers; dust and
-  engine effects. Figures are still built from simple shapes.
+
+## Added 2026-11-11 (second pass): remaining ships, figures, scene look
+
+* ✅ **Blender models for the gunship, walker and sail barge** (`tools/blender/gunship.py`, `walker.py`,
+  `sailbarge.py`): gunship 15k triangles (plated hull, framed canopy, engine pods with intakes and nozzles), walker
+  20k across five posed parts (framed armour, hip drives, pistons, toe flaps), barge 16k (strakes, shuttered and lit
+  windows, railings, draped sails, rigging, lanterns). Code-built versions remain as LOW-quality fallbacks.
+* ✅ **Figures** (`personnel/Crowd.tsx`, `personnel/March.tsx`): crowd bodies are rounder (12-sided, with shoulders,
+  hands, ears and boot toes); base troopers wear chest, shoulder and shin armour and a detailed helmet (15 crowd draw
+  calls, was 12); the marching clone troopers have full plate armour, T-visor helmets with a crest, and a carbine.
+* ✅ **Engine plumes** (`aircraft/models/Plume.tsx`) on the gunship, shuttle, X-wing and TIE fighter, and **ground
+  dust** (`world/GroundFx.tsx`) under the walker's feet and under ships low over the ground.
+* ✅ **Golden-hour colour**: bluer upper sky, lighter haze, brighter sand, slightly higher sun.
+* Not done: the duellists and the hooded leader are still built from simple shapes; no plume on the freighter's
+  engine band or the destroyer.
+* Not verified: the marching troopers and the ship-landing dust were not seen on screen (the preview pane was
+  throttled); frame rate on a real GPU.
 
 Not verified on 2026-11-10: real-GPU frame rate with the new scenery (the preview pane was throttled while
 testing), the new sounds by ear, and `start.cmd` end to end (its stale-build check was run on its own).

@@ -204,6 +204,6 @@ describe('crowd geometry', () => {
     const body = tris('pelvis') + tris('torso') + tris('head') + 2 * (tris('upperArm') + tris('forearm') + tris('thigh') + tris('shin'))
     const per = { body, cap: tris('cap'), trooperHelmet: tris('trooperHelmet'), pilotHelmet: tris('pilotHelmet'), rifle: tris('rifle'), coat: tris('coat') }
     console.log('triangles per character', per, Object.fromEntries(Object.keys(g).map((k) => [k, tris(k as keyof typeof g)])))
-    expect(body + Math.max(per.cap, per.trooperHelmet, per.pilotHelmet) + per.rifle).toBeLessThan(820)
+    expect(body + Math.max(per.cap, per.trooperHelmet, per.pilotHelmet) + per.rifle).toBeLessThan(2600)
   })
 })

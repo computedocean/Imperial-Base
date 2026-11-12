@@ -10,6 +10,7 @@ import { useFrame } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { aircraftObjects } from '../aircraft/AircraftLayer'
+import { Baked, shipBind, type Bind } from '../aircraft/models/Baked'
 import { GeoBatch, bevelBox, chamferRect, cylX, cylZ, loft, mat, type MatKey } from '../aircraft/models/materials'
 import { sim } from '../sim/world'
 import { useStore } from '../state/store'
@@ -112,8 +113,16 @@ function buildWalker() {
   return cache
 }
 
-function PartMeshes({ parts }: { parts: Parts }) {
-  return <>{(Object.keys(parts) as MatKey[]).map((k) => <mesh key={k} geometry={parts[k]} material={mat(k)} castShadow receiveShadow />)}</>
+type PartName = 'body' | 'head' | 'thigh' | 'shin' | 'foot'
+const PART_NAMES: PartName[] = ['body', 'head', 'thigh', 'shin', 'foot']
+
+/** One part: the Blender-built model (tools/blender/walker.py), with the code-built one as the fallback. */
+function PartMeshes({ parts, name, bind }: { parts: Parts; name: PartName; bind: Bind }) {
+  return (
+    <Baked name={`walker_${name}`} bind={bind} fallback={
+      <>{(Object.keys(parts) as MatKey[]).map((k) => <mesh key={k} geometry={parts[k]} material={mat(k)} castShadow receiveShadow />)}</>
+    } />
+  )
 }
 
 /** Live world position of the hull (camera follow + QA). */
@@ -145,6 +154,8 @@ export function Walker({ visible = true }: { visible?: boolean }) {
   const feet = useRef<(THREE.Group | null)[]>([])
   const select = useStore((s) => s.select)
   const across = useMemo(() => new THREE.Vector3(), [])
+  // each part has its own baked shadow map, so each gets its own material copies
+  const binds = useMemo(() => Object.fromEntries(PART_NAMES.map((n) => [n, shipBind(['hull', 'gun', 'dark', 'navRed'])])) as Record<PartName, Bind>, [])
 
   useFrame(() => {
     const t = sim.time
@@ -183,16 +194,16 @@ export function Walker({ visible = true }: { visible?: boolean }) {
   return (
     <group name="walker" visible={visible} onClick={(e) => { e.stopPropagation(); select({ kind: 'aircraft', id: 'walker' }) }}>
       <group ref={(o) => { (hull as any).current = o; walkerObject.current = o; if (o) aircraftObjects.set('walker', o); else aircraftObjects.delete('walker') }}>
-        <PartMeshes parts={geo.body} />
+        <PartMeshes parts={geo.body} name="body" bind={binds.body} />
         <group ref={head} position={[0, 3.3, NECK_Z + 4.4]}>
-          <PartMeshes parts={geo.head} />
+          <PartMeshes parts={geo.head} name="head" bind={binds.head} />
         </group>
       </group>
       {LEGS.map((leg, i) => (
         <group key={leg.id}>
-          <group ref={(o) => { thighs.current[i] = o }}><PartMeshes parts={geo.thigh} /></group>
-          <group ref={(o) => { shins.current[i] = o }}><PartMeshes parts={geo.shin} /></group>
-          <group ref={(o) => { feet.current[i] = o }}><PartMeshes parts={geo.foot} /></group>
+          <group ref={(o) => { thighs.current[i] = o }}><PartMeshes parts={geo.thigh} name="thigh" bind={binds.thigh} /></group>
+          <group ref={(o) => { shins.current[i] = o }}><PartMeshes parts={geo.shin} name="shin" bind={binds.shin} /></group>
+          <group ref={(o) => { feet.current[i] = o }}><PartMeshes parts={geo.foot} name="foot" bind={binds.foot} /></group>
         </group>
       ))}
     </group>

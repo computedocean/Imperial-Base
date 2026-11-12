@@ -9,6 +9,7 @@ import { useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeElements } from '@react-three/fiber'
 import { timberTexture } from '../../world/surface'
+import { Baked, type Bind } from './Baked'
 import { GeoBatch, bevelBox, chamferRect, cylZ, loft, plateZY, type MatKey } from './materials'
 
 type Parts = Partial<Record<MatKey, THREE.BufferGeometry>>
@@ -72,12 +73,28 @@ export function SailBarge(props: ThreeElements['group']) {
     gun: new THREE.MeshStandardMaterial({ color: '#5a3f27', map: timberTexture(), roughness: 0.8, metalness: 0.3 }),
     dark: new THREE.MeshStandardMaterial({ color: '#17110c', roughness: 0.7, metalness: 0.4 }),
     stripe: new THREE.MeshStandardMaterial({ color: '#c8742c', roughness: 0.95, metalness: 0, side: THREE.DoubleSide }),
-  }) as Partial<Record<MatKey, THREE.Material>>, [])
+    // lanterns and lit cabin windows (Blender model only)
+    lamp: new THREE.MeshStandardMaterial({ color: '#2a1a0c', emissive: '#ffb35c', emissiveIntensity: 2.6, roughness: 0.6 }),
+  }) as Record<string, THREE.Material>, [])
+  // copies, so the baked shadow map never lands on the materials the fallback uses
+  const bind = useMemo<Bind>(() => {
+    const own = new Map<string, THREE.Material>()
+    return (name) => {
+      const key = m[name] ? name : 'gun'
+      if (!own.has(key)) own.set(key, m[key].clone())
+      return { material: own.get(key)!, ao: key !== 'lamp' }
+    }
+  }, [m])
   return (
     <group {...props}>
-      {(Object.keys(geo) as MatKey[]).map((key) => (
-        <mesh key={key} geometry={geo[key]} material={m[key] ?? m.gun} castShadow receiveShadow />
-      ))}
+      {/* the Blender-built model (tools/blender/sailbarge.py); the code-built one is the fallback */}
+      <Baked name="sailbarge" bind={bind} fallback={
+        <>
+          {(Object.keys(geo) as MatKey[]).map((key) => (
+            <mesh key={key} geometry={geo[key]} material={m[key] ?? m.gun} castShadow receiveShadow />
+          ))}
+        </>
+      } />
     </group>
   )
 }
