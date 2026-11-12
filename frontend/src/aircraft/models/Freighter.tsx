@@ -10,6 +10,7 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeElements } from '@react-three/fiber'
+import { Baked, type Bind } from './Baked'
 import { GeoBatch, bevelBox, cylX, cylZ, engineGlowBlueMat, mat, plateXZ, type MatKey, type V2 } from './materials'
 
 export type FreighterProps = ThreeElements['group'] & {
@@ -170,12 +171,26 @@ export function Freighter({ gear = 1, thrust = 0, ...props }: FreighterProps) {
   }, [])
   useEffect(() => () => glowMat.dispose(), [glowMat])
   glowMat.emissiveIntensity = 0.12 + clamp01(thrust) * 4.2
+  // own copies of the shared aircraft materials: the baked shadow map is attached to them
+  const bind = useMemo<Bind>(() => {
+    const own = new Map<string, THREE.Material>()
+    return (name) => {
+      const key = (['xwhite', 'gun', 'dark', 'glass', 'stripe', 'hull', 'navRed', 'navWhite'].includes(name) ? name : 'gun') as MatKey
+      if (!own.has(key)) own.set(key, mat(key).clone())
+      return { material: own.get(key)!, ao: key !== 'glass' }
+    }
+  }, [])
   const k = clamp01(gear)
   return (
     <group {...props}>
-      {(Object.keys(geo.body) as MatKey[]).map((key) => (
-        <mesh key={key} geometry={geo.body[key]} material={mat(key)} castShadow receiveShadow />
-      ))}
+      {/* hull: the Blender-built model (tools/blender/freighter.py); the code-built one is the fallback */}
+      <Baked name="freighter" bind={bind} fallback={
+        <>
+          {(Object.keys(geo.body) as MatKey[]).map((key) => (
+            <mesh key={key} geometry={geo.body[key]} material={mat(key)} castShadow receiveShadow />
+          ))}
+        </>
+      } />
       <mesh geometry={geo.glow} material={glowMat} />
       {/* gear retracts straight up into the belly */}
       <group visible={k > 0.02} position={[0, (1 - k) * (LEG + 0.6), 0]}>

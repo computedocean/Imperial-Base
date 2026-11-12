@@ -9,6 +9,8 @@
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeElements } from '@react-three/fiber'
+import { armourTexture, viewportLights } from '../../world/surface'
+import { Baked, type Bind } from './Baked'
 import { GeoBatch, bevelBox, chamferRect, cylZ, loft, type MatKey } from './materials'
 
 export type StarDestroyerProps = ThreeElements['group'] & { thrust?: number }
@@ -79,21 +81,56 @@ function buildDestroyer() {
 
 export function StarDestroyer({ thrust = 0.4, ...props }: StarDestroyerProps) {
   const geo = useMemo(buildDestroyer, [])
-  const m = useMemo(() => ({
-    hull: new THREE.MeshStandardMaterial({ color: '#aeb2b8', roughness: 0.6, metalness: 0.35, fog: false, emissive: '#2c3138', emissiveIntensity: 0.5 }),
-    gun: new THREE.MeshStandardMaterial({ color: '#7c8188', roughness: 0.6, metalness: 0.45, fog: false, emissive: '#1c2026', emissiveIntensity: 0.5 }),
-    dark: new THREE.MeshStandardMaterial({ color: '#23262b', roughness: 0.7, metalness: 0.4, fog: false }),
-    glow: new THREE.MeshBasicMaterial({ color: '#9cc8ff', toneMapped: false, fog: false, side: THREE.DoubleSide }),
-  }), [])
+  const m = useMemo(() => {
+    // plating as colour and relief; the same UVs carry rows of lit viewports as an emissive map
+    const plate = armourTexture()
+    const lights = viewportLights()
+    const hull = (color: string, glow: number) => new THREE.MeshStandardMaterial({
+      color, map: plate, bumpMap: plate, bumpScale: 0.7, roughness: 0.62, metalness: 0.35, fog: false,
+      emissive: '#ffffff', emissiveMap: lights, emissiveIntensity: glow,
+    })
+    return {
+      hull: hull('#c3c7cc', 1.5),
+      gun: hull('#8d9299', 1.2),
+      dark: new THREE.MeshStandardMaterial({ color: '#1d2024', roughness: 0.7, metalness: 0.4, fog: false }),
+      glow: new THREE.MeshBasicMaterial({ color: '#9cc8ff', toneMapped: false, fog: false, side: THREE.DoubleSide }),
+    }
+  }, [])
   useEffect(() => () => Object.values(m).forEach((x) => x.dispose()), [m])
   m.glow.color.setRGB(0.5 + thrust * 0.5, 0.7 + thrust * 0.3, 1).multiplyScalar(0.6 + thrust * 1.6)
   const mats: Partial<Record<MatKey, THREE.Material>> = { hull: m.hull, gun: m.gun, dark: m.dark }
-  return (
-    <group {...props}>
+  // materials for the Blender-built model (tools/blender/destroyer.py), bound by material name
+  const baked = useMemo(() => {
+    const plate = armourTexture()
+    // pale armour; the modelled deck detail carries the relief, the texture only adds fine plate lines.
+    // A little self-illumination keeps the shadow side readable against the bright sky.
+    const armour = (color: string) => new THREE.MeshStandardMaterial({ color, map: plate, roughness: 0.55, metalness: 0.2, fog: false, emissive: color, emissiveMap: plate, emissiveIntensity: 0.28 })
+    const set: Record<string, THREE.Material> = {
+      hull: armour('#eef1f4'),
+      light: armour('#ffffff'),
+      dark: armour('#b3b9c0'),
+      black: new THREE.MeshStandardMaterial({ color: '#0d0f12', roughness: 0.8, metalness: 0.3, fog: false }),
+      windows: new THREE.MeshBasicMaterial({ color: '#ffe2b0', toneMapped: false, fog: false }),
+    }
+    const bind: Bind = (name) => {
+      if (name === 'engine') return { material: m.glow, ao: false, shadows: false }
+      if (name === 'windows') return { material: set.windows, ao: false, shadows: false }
+      return { material: set[name] ?? set.hull, shadows: false }
+    }
+    return { set, bind }
+  }, [m.glow])
+  useEffect(() => () => Object.values(baked.set).forEach((x) => x.dispose()), [baked])
+  const procedural = (
+    <>
       {(Object.keys(geo.body) as MatKey[]).map((key) => (
         <mesh key={key} geometry={geo.body[key]} material={mats[key] ?? m.gun} frustumCulled={false} />
       ))}
       <mesh geometry={geo.glow} material={m.glow} frustumCulled={false} />
+    </>
+  )
+  return (
+    <group {...props}>
+      <Baked name="destroyer" bind={baked.bind} fallback={procedural} />
     </group>
   )
 }

@@ -8,6 +8,7 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import type { ThreeElements } from '@react-three/fiber'
+import { timberTexture } from '../../world/surface'
 import { GeoBatch, bevelBox, chamferRect, cylZ, loft, plateZY, type MatKey } from './materials'
 
 type Parts = Partial<Record<MatKey, THREE.BufferGeometry>>
@@ -67,8 +68,8 @@ function buildBarge() {
 export function SailBarge(props: ThreeElements['group']) {
   const geo = useMemo(buildBarge, [])
   const m = useMemo(() => ({
-    hull: new THREE.MeshStandardMaterial({ color: '#6e4a2c', roughness: 0.85, metalness: 0.25 }),
-    gun: new THREE.MeshStandardMaterial({ color: '#3d2c1d', roughness: 0.8, metalness: 0.35 }),
+    hull: new THREE.MeshStandardMaterial({ color: '#8a5c36', map: timberTexture(), bumpMap: timberTexture(), bumpScale: 1.2, roughness: 0.85, metalness: 0.15 }),
+    gun: new THREE.MeshStandardMaterial({ color: '#5a3f27', map: timberTexture(), roughness: 0.8, metalness: 0.3 }),
     dark: new THREE.MeshStandardMaterial({ color: '#17110c', roughness: 0.7, metalness: 0.4 }),
     stripe: new THREE.MeshStandardMaterial({ color: '#c8742c', roughness: 0.95, metalness: 0, side: THREE.DoubleSide }),
   }) as Partial<Record<MatKey, THREE.Material>>, [])

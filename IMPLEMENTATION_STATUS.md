@@ -137,6 +137,19 @@ New scenery (all simulated, all original geometry):
 * ✅ **Duel recast**: the master now fights a horned, red-faced challenger with a red double-bladed staff. The
   round is unchanged (face-off, exchanges, lock, spin, leap, disarm).
 
+## Added 2026-11-11 — better-looking base
+
+* ✅ **Blender ship models** (`tools/blender/destroyer.py`, `freighter.py`, loader `aircraft/models/Baked.tsx`):
+  the Star Destroyer (75k triangles: stepped terraces with lit strips, deck detail, trench machinery, bridge tower,
+  engine bank) and the freighter hull (21k triangles: plating that follows the saucer, vent grilles, framed cockpit,
+  dish, docking rings). Bevelled edges and ambient occlusion baked in Cycles. The code-built versions remain as
+  fallbacks on LOW quality.
+* ✅ **Temple stonework** (`world/Temple.tsx`, textures in `world/surface.ts`): coursed stone with relief, buttresses,
+  recessed lamp-lit windows, ribbed tiers, pediment, lit spire galleries.
+* ✅ Planked hull on the sail barge.
+* Not done: Blender versions of the gunship, walker and sail barge; armour detail on the clone troopers; dust and
+  engine effects. Figures are still built from simple shapes.
+
 Not verified on 2026-11-10: real-GPU frame rate with the new scenery (the preview pane was throttled while
 testing), the new sounds by ear, and `start.cmd` end to end (its stale-build check was run on its own).
 

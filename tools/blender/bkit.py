@@ -134,6 +134,37 @@ class Model:
         tmp.faces.new(rings[0])
         self._commit(tmp, mat)
 
+    def lathe_z(self, mat, cx, cy, profile, seg=24, bevel=0.0):
+        """Solid of revolution about an axis parallel to Z through (cx, cy). profile: [(z, radius), ...]."""
+        rings = [[(cx + r * math.cos(2 * math.pi * i / seg), cy + r * math.sin(2 * math.pi * i / seg), z) for i in range(seg)]
+                 for z, r in profile]
+        if profile[0][0] > profile[-1][0]:
+            rings.reverse()
+        # loft() expects the first ring to face -axis; rings run towards +Z here
+        self.loft(mat, [list(reversed(r)) for r in rings], bevel=bevel)
+
+    def sphere(self, mat, r, pos, seg=20, rings=10, squash=1.0, half=None):
+        """UV sphere centred on pos (three coords). half='top' / 'bottom' keeps one hemisphere (closed)."""
+        lo, hi = (0, rings) if half is None else ((rings // 2, rings) if half == 'bottom' else (0, rings // 2))
+        loops = []
+        for k in range(lo, hi + 1):
+            a = math.pi * k / rings  # 0 = top pole
+            rr = max(r * math.sin(a), r * 0.02)
+            y = pos[1] + r * math.cos(a) * squash
+            loops.append([(pos[0] + rr * math.cos(2 * math.pi * i / seg), y, pos[2] + rr * math.sin(2 * math.pi * i / seg)) for i in range(seg)])
+        self.loft(mat, list(reversed(loops)))
+
+    def ring_xy(self, z, w, yb, yt, c):
+        """Chamfered rectangular section in the XY plane at depth z (for lofting hulls along Z)."""
+        h = w / 2
+        c = min(c, h * 0.9, (yt - yb) * 0.45)
+        pts = [(h - c, yb), (h, yb + c), (h, yt - c), (h - c, yt), (-h + c, yt), (-h, yt - c), (-h, yb + c), (-h + c, yb)]
+        return [(x, y, z) for x, y in pts]
+
+    def hull_z(self, mat, sections, bevel=0.0):
+        """Loft along Z through chamfered sections [(z, width, y_bottom, y_top, chamfer), ...] in increasing z."""
+        self.loft(mat, [list(reversed(self.ring_xy(*s))) for s in sections], bevel=bevel)
+
     # ------------------------------------------------------------------ finish
     def to_object(self):
         me = bpy.data.meshes.new(self.name)
@@ -256,8 +287,9 @@ EMISSIVE = {'windows': ((1.0, 0.78, 0.5), 6.0), 'red': ((1.0, 0.12, 0.06), 40.0)
             'whiteLight': ((0.9, 0.95, 1.0), 25.0), 'holo': ((0.3, 0.7, 1.0), 15.0)}
 
 
-def preview(ob, ao_img, out_png, cam_loc, cam_target, res=(1280, 720), lens=35):
-    """Quick Eevee beauty render of the model (AO multiplied into a flat albedo) for review."""
+def preview(ob, ao_img, out_png, cam_loc, cam_target, res=(1280, 720), lens=35, ground=True, clip_end=5000):
+    """Quick Eevee beauty render of the model (AO multiplied into a flat albedo) for review.
+    ground=False leaves out the ground plane (for ships, which are modelled around their own centre)."""
     scene = bpy.context.scene
     scene.render.engine = 'BLENDER_EEVEE'
     for m in ob.data.materials:
@@ -298,15 +330,16 @@ def preview(ob, ao_img, out_png, cam_loc, cam_target, res=(1280, 720), lens=35):
     bg = w.node_tree.nodes.get('Background')
     bg.inputs[0].default_value = (0.55, 0.45, 0.36, 1)
     bg.inputs[1].default_value = 0.6
-    bpy.ops.mesh.primitive_plane_add(size=3000, location=(0, 0, -0.03))
-    gp = bpy.context.active_object
-    gm = bpy.data.materials.new('ground_prev')
-    gm.use_nodes = True
-    gm.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.32, 0.24, 0.17, 1)
-    gp.data.materials.append(gm)
+    if ground:
+        bpy.ops.mesh.primitive_plane_add(size=3000, location=(0, 0, -0.03))
+        gp = bpy.context.active_object
+        gm = bpy.data.materials.new('ground_prev')
+        gm.use_nodes = True
+        gm.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (0.32, 0.24, 0.17, 1)
+        gp.data.materials.append(gm)
     cam_d = bpy.data.cameras.new('cam')
     cam_d.lens = lens
-    cam_d.clip_end = 5000
+    cam_d.clip_end = clip_end
     cam = bpy.data.objects.new('cam', cam_d)
     cam.location = b(cam_loc)
     direction = b(cam_target) - cam.location
