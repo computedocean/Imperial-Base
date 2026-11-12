@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
+import { Baked, shipBind } from './Baked'
 import { EnginePlume } from './Plume'
 import type { ThreeElements } from '@react-three/fiber'
 import { GeoBatch, bevelBox, cylX, cylZ, engineGlowRedMat, loft, mat, plateZY, type MatKey, type V2 } from './materials'
@@ -129,6 +130,8 @@ function buildTie() {
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+/** every fighter shares one set of materials carrying the baked shadow map */
+const BIND = shipBind(['hull', 'gun', 'dark', 'glass', 'solar'])
 
 export function TieFighter({ thrust = 0.5, ...props }: TieFighterProps) {
   const geo = useMemo(buildTie, [])
@@ -138,9 +141,14 @@ export function TieFighter({ thrust = 0.5, ...props }: TieFighterProps) {
 
   return (
     <group {...props}>
-      {(Object.keys(geo.parts) as MatKey[]).map((k) => (
-        <mesh key={k} geometry={geo.parts[k]} material={mat(k)} castShadow receiveShadow />
-      ))}
+      {/* the Blender-built model (tools/blender/tie.py); the code-built one is the fallback */}
+      <Baked name="tie" bind={BIND} fallback={
+        <>
+          {(Object.keys(geo.parts) as MatKey[]).map((k) => (
+            <mesh key={k} geometry={geo.parts[k]} material={mat(k)} castShadow receiveShadow />
+          ))}
+        </>
+      } />
       <mesh geometry={geo.glow} material={glowMat} />
       <EnginePlume at={PLUMES} radius={0.2} length={2.6} color="#ff4a34" thrust={thrust} />
     </group>

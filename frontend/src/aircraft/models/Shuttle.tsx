@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { Baked, shipBind } from './Baked'
 import { EnginePlume } from './Plume'
 import { useFrame, type ThreeElements } from '@react-three/fiber'
 import {
@@ -195,6 +196,8 @@ function PartMeshes({ parts }: { parts: Parts }) {
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
+const BODY_BIND = shipBind(['hull', 'gun', 'dark', 'glass'])
+const WING_BIND = shipBind(['hull', 'gun', 'dark', 'glass'])
 
 export function Shuttle({ wingFold = 1, gear = 1, ramp = 0, thrust = 0.3, navLights = true, ...props }: ShuttleProps) {
   const geo = useMemo(buildShuttle, [])
@@ -215,13 +218,14 @@ export function Shuttle({ wingFold = 1, gear = 1, ramp = 0, thrust = 0.3, navLig
 
   return (
     <group {...props}>
-      <PartMeshes parts={geo.body} />
+      {/* Blender-built hull and wing (tools/blender/shuttle.py); the code-built ones are the fallback */}
+      <Baked name="shuttle_body" bind={BODY_BIND} fallback={<PartMeshes parts={geo.body} />} />
       <mesh geometry={geo.glow} material={glowMat} />
       <EnginePlume at={PLUMES} radius={0.84} length={10} color="#5a96ff" thrust={thrust} />
       {/* wings: +X side and mirrored -X side */}
       {[1, -1].map((sx) => (
         <group key={sx} position={[sx * HINGE_X, HINGE_Y, 0]} rotation={[0, 0, -sx * angle]} scale={[sx, 1, 1]}>
-          <PartMeshes parts={geo.wing} />
+          <Baked name="shuttle_wing" bind={WING_BIND} fallback={<PartMeshes parts={geo.wing} />} />
           {navLights && <mesh geometry={geo.nav} material={mat(sx > 0 ? 'navRed' : 'navWhite')} position={[0, WING_SPAN + 0.1, -4.8]} />}
         </group>
       ))}

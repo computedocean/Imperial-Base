@@ -2,7 +2,9 @@
 // (one geometry per material per type → rendered as InstancedMeshes). Units: metres, nose = +Z,
 // y = 0 is the underside of the repulsor pods (the layer adds the hover height).
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { withBakedAO } from '../aircraft/models/Baked'
 import { Kit } from '../world/kit'
 import type { MatKey } from '../world/materials'
 import type { VehicleType } from './routes'
@@ -100,13 +102,13 @@ const BODY: Partial<Record<MatKey, string>> = {
 }
 const GLOW: Partial<Record<MatKey, string>> = { red: '#ff3a26', whiteLight: '#e8f2ff', amber: '#ffa22a', holo: '#4cb8ff' }
 
-function colorize(g: THREE.BufferGeometry, hex: string) {
+function colorize(g: THREE.BufferGeometry, hex: string, keepUv = false) {
   const c = new THREE.Color(hex)
   const n = g.attributes.position.count
   const arr = new Float32Array(n * 3)
   for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b }
   g.setAttribute('color', new THREE.BufferAttribute(arr, 3))
-  g.deleteAttribute('uv')
+  if (!keepUv) g.deleteAttribute('uv')
   return g
 }
 
@@ -133,3 +135,36 @@ export const vehicleMaterials = () => ({
   // > 1 so the lights catch the bloom pass on high/cinematic
   glow: (_glowMat ??= new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, color: new THREE.Color(2.4, 2.4, 2.4) })),
 })
+
+export interface BakedVehicle { body: THREE.BufferGeometry; glow: THREE.BufferGeometry; material: THREE.MeshStandardMaterial }
+
+/**
+ * The Blender-built version of a vehicle (tools/blender/vehicles.py): public/models/veh_<type>.glb plus its baked
+ * shadow map. It is merged the same way as the code-built one (one vertex-coloured body, one glow geometry), so it
+ * still draws as two instanced meshes per type. Rejects if a file is missing; the caller keeps the code-built model.
+ */
+export async function loadBakedVehicle(type: VehicleType): Promise<BakedVehicle> {
+  const base = `${import.meta.env.BASE_URL}models/veh_${type}`
+  const [gltf, ao] = await Promise.all([new GLTFLoader().loadAsync(`${base}.glb`), new THREE.TextureLoader().loadAsync(`${base}_ao.jpg`)])
+  ao.flipY = false // glTF UV convention
+  ao.channel = 1
+  ao.colorSpace = THREE.NoColorSpace
+  ao.anisotropy = 4
+  const body: THREE.BufferGeometry[] = []
+  const glow: THREE.BufferGeometry[] = []
+  gltf.scene.updateMatrixWorld(true)
+  gltf.scene.traverse((o) => {
+    const mesh = o as THREE.Mesh
+    if (!mesh.isMesh) return
+    const name = ((mesh.material as THREE.Material).name || 'hull').replace(/\.\d+$/, '') as MatKey
+    const g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld)
+    if (GLOW[name]) glow.push(colorize(g, GLOW[name]!, true))
+    else body.push(colorize(g, BODY[name] ?? '#888888', true))
+  })
+  const out = { body: mergeGeometries(body, false)!, glow: mergeGeometries(glow, false)! }
+  body.concat(glow).forEach((g) => g.dispose())
+  out.body.computeBoundingSphere()
+  out.glow.computeBoundingSphere()
+  const material = withBakedAO(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.35 }), ao)
+  return { ...out, material }
+}

@@ -52,7 +52,7 @@ class Model:
             self.mats.append(mat)
         return self.mats.index(mat)
 
-    def _commit(self, tmp, mat, bevel=0.0, bevel_angle=30.0):
+    def _commit(self, tmp, mat, bevel=0.0, bevel_angle=30.0, smooth=False):
         bmesh.ops.recalc_face_normals(tmp, faces=tmp.faces[:])
         if bevel > 0:
             edges = [e for e in tmp.edges if e.is_manifold and e.calc_face_angle(0) > math.radians(bevel_angle)]
@@ -69,10 +69,10 @@ class Model:
             except ValueError:
                 continue
             nf.material_index = mi
-            nf.smooth = False
+            nf.smooth = smooth
         tmp.free()
 
-    def loft(self, mat, rings, cap=True, bevel=0.0):
+    def loft(self, mat, rings, cap=True, bevel=0.0, smooth=False):
         """rings: list of loops of three.js points (same count, same winding). Side quads + convex end caps."""
         tmp = bmesh.new()
         vr = [[tmp.verts.new(b(p)) for p in ring] for ring in rings]
@@ -84,7 +84,7 @@ class Model:
         if cap:
             tmp.faces.new(vr[0])
             tmp.faces.new(list(reversed(vr[-1])))
-        self._commit(tmp, mat, bevel)
+        self._commit(tmp, mat, bevel, smooth=smooth)
 
     def prism(self, mat, outline_bottom, y0, h, outline_top=None, bevel=0.0):
         """Vertical loft between two (x, z) outlines at y0 and y0 + h."""
@@ -165,7 +165,7 @@ class Model:
         """Loft along Z through chamfered sections [(z, width, y_bottom, y_top, chamfer), ...] in increasing z."""
         self.loft(mat, [list(reversed(self.ring_xy(*s))) for s in sections], bevel=bevel)
 
-    def lathe(self, mat, origin, direction, profile, seg=16, bevel=0.0):
+    def lathe(self, mat, origin, direction, profile, seg=16, bevel=0.0, smooth=False, cap=True):
         """Solid of revolution about any axis. profile: [(distance along the axis, radius), ...]; it may double
         back on itself (intake lips, hollow nozzles). The first and last rings are capped."""
         o, ax = Vector(origin), Vector(direction).normalized()
@@ -174,12 +174,22 @@ class Model:
         v = ax.cross(u).normalized()
         rings = [[tuple(o + ax * t + (u * math.cos(2 * math.pi * i / seg) + v * math.sin(2 * math.pi * i / seg)) * max(r, 0.01))
                   for i in range(seg)] for t, r in profile]
-        self.loft(mat, rings, bevel=bevel)
+        self.loft(mat, rings, bevel=bevel, smooth=smooth, cap=cap)
 
     def tube(self, mat, p0, p1, r, r1=None, seg=10, bevel=0.0):
         """Round strut between two three.js points (r at p0, r1 at p1)."""
         d = Vector(p1) - Vector(p0)
         self.lathe(mat, p0, d, [(0.0, r), (d.length, r if r1 is None else r1)], seg=seg, bevel=bevel)
+
+    def ring(self, mat, origin, direction, radius, half_len, half_thick, seg=24):
+        """Band with a rectangular section around an axis (a hoop: weld seams, frames, collars)."""
+        a, b_ = radius - half_thick, radius + half_thick
+        self.lathe(mat, origin, direction, [(-half_len, a), (-half_len, b_), (half_len, b_), (half_len, a), (-half_len, a)], seg=seg, cap=False)
+
+    def plate_zy(self, mat, outline, thickness, x=0.0, bevel=0.0):
+        """Flat plate standing in the ZY plane: outline [(z, y), ...], centred on x (fins, wings, vanes)."""
+        h = thickness / 2
+        self.loft(mat, [[(x - h, y, z) for z, y in outline], [(x + h, y, z) for z, y in outline]], bevel=bevel)
 
     def sheet(self, mat, grid, thickness=0.06):
         """Thin closed skin through a grid of three.js points (rows of equal length), e.g. a sail."""
@@ -388,3 +398,35 @@ def args():
 
 def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+def run(tag, parts, tile, preview_view=None, colors=None, margin=0.003):
+    """Standard build for a model made of one or more parts: for each (build function, bake size, AO distance)
+    build it, unwrap a lightmap, bake ambient occlusion and export <name>.glb + <name>_ao.jpg.
+    Command-line options: --out <dir> --size <px, scales every part> --samples <n> --preview <dir>.
+    preview_view = (camera position, target, lens) renders the LAST part to <preview>/<name>.png."""
+    a = args()
+    out = os.path.abspath(a.get('out', 'frontend/public/models'))
+    prev = a.get('preview')
+    scale = int(a.get('size', '2048')) / 2048
+    os.makedirs(out, exist_ok=True)
+    reset()
+    global TILE
+    TILE = tile
+    ob = img = None
+    for build, size, dist in parts:
+        if ob is not None:
+            bpy.data.objects.remove(ob, do_unlink=True)
+        m = build()
+        ob = m.to_object()
+        print(f'[{tag}] {m.name}: {m.tris} triangles, materials {m.mats}')
+        lightmap_unwrap(ob, margin=margin)
+        img = bake_ao(ob, os.path.join(out, m.name + '_ao.jpg'), size=max(256, int(size * scale)), samples=int(a.get('samples', '48')),
+                      distance=dist, ground=False)
+        export_glb(ob, os.path.join(out, m.name + '.glb'))
+    if prev and preview_view:
+        os.makedirs(prev, exist_ok=True)
+        PREVIEW_COLORS.update(colors or {})
+        cam, target, lens = preview_view
+        preview(ob, img, os.path.join(os.path.abspath(prev), ob.name + '.png'), cam, target, ground=False, lens=lens)
+    print(f'[{tag}] done')

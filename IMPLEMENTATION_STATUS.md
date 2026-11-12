@@ -163,6 +163,11 @@ New scenery (all simulated, all original geometry):
 * ✅ **Desert** (`world/Desert.tsx`, `tools/blender/desert.py`): the 450 boulders are now three photo-scanned
   Poly Haven rocks (CC0, 1,500 triangles each, instanced), and seven terraced mesas made with Blender's A.N.T.
   Landscape extension stand in the dunes between 1.2 and 1.9 km out. LOW quality keeps the simple rocks, no mesas.
+* ✅ **Shuttle, TIE fighter, X-wing and all four ground vehicles are Blender models** (`tools/blender/shuttle.py`,
+  `tie.py`, `xwing.py`, `vehicles.py`): shuttle 8k + 1.8k per wing, TIE 9k, X-wing 5k + 2.4k per wing, vehicles
+  3-5k each. Every aircraft and vehicle in the scene is now Blender-built; code-built versions remain as fallbacks.
+* Measured in the throttled preview on HIGH: 767 draw calls and 2.5 M triangles per frame (all passes). Not yet
+  measured on a real GPU.
 * Not done: the duellists and the hooded leader are still built from simple shapes; no plume on the freighter's
   engine band or the destroyer.
 * Not verified: the marching troopers and the ship-landing dust were not seen on screen (the preview pane was

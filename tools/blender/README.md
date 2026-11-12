@@ -57,3 +57,20 @@ The boulders (`rock_a/b/c.glb`) and the cliff texture (`cliff_diff.jpg`, `cliff_
 (namaqualand_boulder_05, namaqualand_boulder_03, boulder_01, marble_cliff_03), imported through the MCP for Blender
 add-on, decimated to 1,500 triangles each and exported with colour and normal maps. `frontend/src/world/Desert.tsx`
 places both.
+
+## Shuttle, TIE fighter, X-wing and the ground vehicles
+
+`shuttle.py`, `tie.py`, `xwing.py` and `vehicles.py` use the shared runner `bkit.run(tag, parts, tile, ...)`, which
+builds each part, unwraps a lightmap, bakes ambient occlusion and exports `<name>.glb` + `<name>_ao.jpg`.
+
+```
+%B% -b --factory-startup -P tools/blender/tie.py      -- --out frontend/public/models
+%B% -b --factory-startup -P tools/blender/xwing.py    -- --out frontend/public/models
+%B% -b --factory-startup -P tools/blender/shuttle.py  -- --out frontend/public/models
+%B% -b --factory-startup -P tools/blender/vehicles.py -- --out frontend/public/models
+```
+Parts that move in code are separate files in the frame of the part they replace: `xwing_body` + `xwing_wing` (one
+wing, mirrored three times), `shuttle_body` + `shuttle_wing` (hinge frame). The shuttle's gear and ramp stay in code.
+The vehicles (`veh_hauler`, `veh_speeder`, `veh_tender`, `veh_troop`) are merged by the app into one vertex-coloured
+body and one glow geometry each, so they still draw as two instanced meshes per type.
+`bkit.py` gained smooth shading on lofts and lathes, `ring` (hoops and collars) and `plate_zy` (fins and wings).

@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
+import { Baked, shipBind } from './Baked'
 import { EnginePlume } from './Plume'
 import type { ThreeElements } from '@react-three/fiber'
 import {
@@ -141,6 +142,10 @@ function buildXWing() {
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
+const KEYS: MatKey[] = ['xwhite', 'gun', 'dark', 'glass', 'hull', 'stripe']
+const BODY_BIND = shipBind(KEYS)
+const WING_BIND = shipBind(KEYS)
+
 // [mirrorX, mirrorY]: +1/-1 per wing (upper-right, upper-left, lower-right, lower-left)
 const WINGS: [number, number][] = [[1, 1], [-1, 1], [1, -1], [-1, -1]]
 
@@ -153,14 +158,23 @@ export function XWing({ sFoil = 1, thrust = 0.5, ...props }: XWingProps) {
 
   return (
     <group {...props}>
-      {(Object.keys(geo.body) as MatKey[]).map((k) => (
-        <mesh key={k} geometry={geo.body[k]} material={mat(k)} castShadow receiveShadow />
-      ))}
+      {/* Blender-built fuselage and wing (tools/blender/xwing.py); the code-built ones are the fallback */}
+      <Baked name="xwing_body" bind={BODY_BIND} fallback={
+        <>
+          {(Object.keys(geo.body) as MatKey[]).map((k) => (
+            <mesh key={k} geometry={geo.body[k]} material={mat(k)} castShadow receiveShadow />
+          ))}
+        </>
+      } />
       {WINGS.map(([mx, my]) => (
         <group key={`${mx}${my}`} position={[0, my * WING_PIVOT_Y, 0]} rotation={[0, 0, mx * my * a]} scale={[mx, my, 1]}>
-          {(Object.keys(geo.wing) as MatKey[]).map((k) => (
-            <mesh key={k} geometry={geo.wing[k]} material={mat(k)} castShadow receiveShadow />
-          ))}
+          <Baked name="xwing_wing" bind={WING_BIND} fallback={
+            <>
+              {(Object.keys(geo.wing) as MatKey[]).map((k) => (
+                <mesh key={k} geometry={geo.wing[k]} material={mat(k)} castShadow receiveShadow />
+              ))}
+            </>
+          } />
           <mesh geometry={geo.glow} material={glowMat} position={[NACELLE.x, NACELLE.y, NACELLE.zRear - 0.6]} />
           <EnginePlume at={PLUME} radius={NACELLE.r * 0.66} length={5} color="#ff6a4a" thrust={thrust} />
         </group>

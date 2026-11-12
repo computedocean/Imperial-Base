@@ -2,14 +2,14 @@
 // Each vehicle type is one merged geometry per material, drawn as an InstancedMesh, so the whole
 // fleet costs 8 draw calls (body + glow per type) regardless of how many vehicles are out.
 import { useFrame } from '@react-three/fiber'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { QUALITY, useStore } from '../state/store'
 import { Kit } from '../world/kit'
 import { GATES, PLATEAU_RADIUS } from '../world/layout'
 import { MAT } from '../world/materials'
 import { makeTerrainSampler } from '../world/terrainSampler'
-import { HOVER, buildVehicle, vehicleMaterials } from './models'
+import { HOVER, buildVehicle, loadBakedVehicle, vehicleMaterials, type BakedVehicle } from './models'
 import { Follower, UNITS, routes, type Pose, type VehicleType } from './routes'
 
 interface Slot { type: VehicleType; index: number; phase: number; yaw: number; roll: number; y: number }
@@ -45,6 +45,19 @@ export function VehicleLayer({ visible = true }: { visible?: boolean }) {
     return out
   }, [counts])
   useEffect(() => () => Object.values(geos).forEach((g) => { g?.body.dispose(); g?.glow.dispose() }), [geos])
+
+  // Blender-built models replace the code-built ones as they arrive (not on LOW quality)
+  const [baked, setBaked] = useState<Partial<Record<VehicleType, BakedVehicle>>>({})
+  useEffect(() => {
+    if (!full) { setBaked({}); return }
+    let live = true
+    for (const t of Object.keys(counts) as VehicleType[]) {
+      if (counts[t] === 0) continue
+      loadBakedVehicle(t).then((b) => { if (live) setBaked((prev) => ({ ...prev, [t]: b })) })
+        .catch((e) => console.warn(`[vehicles] ${t}: keeping the code-built model:`, e))
+    }
+    return () => { live = false }
+  }, [counts, full])
 
   const meshes = useRef<Record<string, THREE.InstancedMesh | null>>({})
   const ground = useMemo(() => {
@@ -100,9 +113,9 @@ export function VehicleLayer({ visible = true }: { visible?: boolean }) {
       {(Object.keys(geos) as VehicleType[]).flatMap((type) =>
         (['body', 'glow'] as const).map((part) => (
           <instancedMesh
-            key={`${type}:${part}`}
+            key={`${type}:${part}:${baked[type] ? 'baked' : 'code'}`}
             ref={(m) => { meshes.current[`${type}:${part}`] = m; if (m) m.frustumCulled = false }}
-            args={[geos[type]![part], vehicleMaterials()[part], counts[type]]}
+            args={[baked[type]?.[part] ?? geos[type]![part], part === 'body' && baked[type] ? baked[type]!.material : vehicleMaterials()[part], counts[type]]}
             castShadow={part === 'body'}
             receiveShadow={part === 'body'}
           />
