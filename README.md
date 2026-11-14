@@ -26,6 +26,9 @@ start.cmd
 `start.cmd` creates the Python venv, installs dependencies and builds the frontend on first run, then serves the
 app at **http://127.0.0.1:8742** and opens your browser.
 
+To stop it, run `stop.cmd` (or press Ctrl+C in the window that `start.cmd` opened). `stop.cmd` ends whatever
+`start.cmd` or `dev.cmd` left listening on ports 8742 and 5273, and leaves any other program on those ports alone.
+
 ### Connect your real Claude Code agents (one time)
 
 ```bat
