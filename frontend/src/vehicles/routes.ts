@@ -32,6 +32,8 @@ export interface RouteDef {
   vOut?: number
   /** corner fillet radius */
   fillet?: number
+  /** lateral acceleration allowed in turns (m/s²); the default suits heavy vehicles, bikes corner much harder */
+  aLat?: number
   /** extra smooth tail (Catmull-Rom points appended after pts, e.g. the outpost road) */
   tail?: [number, number][]
 }
@@ -115,7 +117,7 @@ export function buildRoute(def: RouteDef): Route {
     if (dh > Math.PI) dh = 2 * Math.PI - dh
     const span = STEP * W * 2
     const kappa = dh / span
-    v[i] = Math.min(vmax, kappa > 1e-6 ? Math.sqrt(A_LAT / kappa) : vmax)
+    v[i] = Math.min(vmax, kappa > 1e-6 ? Math.sqrt((def.aLat ?? A_LAT) / kappa) : vmax)
   }
   // junction rule: also cap speed at every waypoint by how sharply the route turns there (≥ 35 % of the limit)
   const P = def.pts
@@ -126,7 +128,8 @@ export function buildRoute(def: RouteDef): Route {
     const p = P[k]
     let turn = Math.abs(Math.atan2(b[0] - p[0], b[1] - p[1]) - Math.atan2(p[0] - a[0], p[1] - a[1]))
     if (turn > Math.PI) turn = 2 * Math.PI - turn
-    const cap = def.vIn * Math.max(0.35, 1 - (turn / (Math.PI / 2)) * 0.6)
+    const limit = insideWall(p[0], p[1], -6) ? def.vIn : def.vOut ?? def.vIn
+    const cap = limit * Math.max(0.35, 1 - (turn / (Math.PI / 2)) * 0.6)
     let best = 0
     let bd = Infinity
     for (let i = 0; i < N; i++) {
@@ -238,9 +241,15 @@ export const ROUTE_DEFS: RouteDef[] = [
   { id: 'troops', vIn: 9, pts: [[-222, 214], [-160, 212], [-95, 168], [-70, 150], [10, 170]] },
   // supply convoy: depot → east gate → outpost road to Kel-Dorr
   { id: 'convoy', vIn: 10, vOut: 22, pts: [[238, 197], [200, 170], [120, 160], [110, 10], [430, 0]], tail: OUTPOST_ROAD.slice(0, -1).concat([[OUTPOST_ROAD[OUTPOST_ROAD.length - 1][0] - 60, OUTPOST_ROAD[OUTPOST_ROAD.length - 1][1]]]) },
+  // speeder-bike patrol, one loop: east road → out the East Gate → fast sweep through the desert round the
+  // outside of the wall → in the North Gate → past Operations and back to the east road
+  {
+    id: 'bike-patrol', loop: true, vIn: 15, vOut: 34, fillet: 70, aLat: 8,
+    pts: [[120, -6], [430, 0], [520, 0], [640, 90], [690, 300], [560, 520], [330, 640], [110, 650], [0, 560], [0, 430], [0, 310], [72, 262], [98, 170], [104, 50]],
+  },
 ]
 
-export type VehicleType = 'hauler' | 'speeder' | 'tender' | 'troop'
+export type VehicleType = 'hauler' | 'speeder' | 'tender' | 'troop' | 'bike'
 
 /** A unit drives one route; several types make a convoy. minQuality 0 = always, 1 = medium and above. */
 export interface UnitSpec {
@@ -264,6 +273,9 @@ export const UNITS: UnitSpec[] = [
   { id: 'troop-1', types: ['troop'], route: 'troops', dwellA: 30, dwellB: 25, delay: 8, minQuality: 1 },
   // supply convoy to the mining outpost and back
   { id: 'convoy', types: ['speeder', 'hauler', 'troop'], gap: 26, route: 'convoy', delay: 20, dwellA: 70, dwellB: 30, minQuality: 1 },
+  // speeder bikes ride in pairs; the second pair starts half a lap away
+  { id: 'bikes-1', types: ['bike', 'bike'], gap: 9, route: 'bike-patrol', minQuality: 0 },
+  { id: 'bikes-2', types: ['bike', 'bike'], gap: 9, route: 'bike-patrol', s: 1100, minQuality: 1 },
 ]
 
 let _routes: Record<string, Route> | null = null

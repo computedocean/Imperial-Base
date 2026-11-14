@@ -194,6 +194,22 @@ describe('sim', () => {
     for (let i = 0; i < 2400; i++) sim.update(1 / 20, { shuttleLanded: false, shuttlePad: pad })
     for (const m of team) expect(m.visible).toBe(false)
   })
+
+  it('the team reaches the real main platform while the shuttle is still on the ground', async () => {
+    const { PADS } = await import('../world/layout')
+    const pad = PADS[0]
+    const sim = createCrowdSim({ count: 120, seed: 3 })
+    // the shuttle stays 45 s; allow 40
+    for (let i = 0; i < 40 * 20; i++) sim.update(1 / 20, { shuttleLanded: true, shuttlePad: pad })
+    const team = sim.members.filter((_, i) => sim.roles[i] === 'shuttle')
+    for (const m of team) {
+      expect(m.visible).toBe(true)
+      expect(Math.hypot(m.x - pad.x, m.z - pad.z)).toBeLessThan(pad.radius)
+    }
+    // the far side of the deck is a long walk round; most of the team must be at work by now
+    const working = team.filter((m) => m.action === 'inspect' || m.action === 'work').length
+    expect(working).toBeGreaterThanOrEqual(Math.ceil(team.length / 2))
+  })
 })
 
 describe('crowd geometry', () => {

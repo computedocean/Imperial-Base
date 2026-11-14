@@ -92,10 +92,66 @@ function troop() {
   return k
 }
 
-const BUILDERS: Record<VehicleType, () => Kit> = { hauler, speeder, tender, troop }
+/**
+ * Scout speeder bike with its rider: slim engine under the saddle, a long twin-rail nose boom ending
+ * in steering vanes, one rear thruster. The rider is part of the model (crouched over the bars), so a
+ * patrol costs no extra draw calls. ~4.6 m.
+ */
+function bike() {
+  const k = new Kit()
+  /** cylinder lying along the bike (z axis), centred at pos; r0 is the rear radius, r1 the front */
+  const zcyl = (mat: MatKey, r0: number, r1: number, len: number, pos: [number, number, number]) =>
+    k.cyl(mat, r1, r0, len, [pos[0], pos[1] - len / 2, pos[2]], 10, [Math.PI / 2, 0, 0])
+  // --- machine
+  k.taper('dark', [0.46, 1.7], [0.36, 1.4], 0.4, [0, 0.12, -0.55])
+  k.box('holo', [0.2, 0.03, 1.0], [0, 0.085, -0.5])
+  zcyl('black', 0.26, 0.2, 0.7, [0, 0.36, -1.6])
+  zcyl('holo', 0.17, 0.17, 0.05, [0, 0.36, -1.97])
+  for (const s of [-1, 1]) k.boxR('hull', [0.04, 0.3, 0.5], [s * 0.3, 0.4, -1.4], [0, s * 0.25, 0])
+  k.box('black', [0.34, 0.1, 0.85], [0, 0.52, -0.6])
+  k.taper('hull', [0.4, 0.7], [0.26, 0.45], 0.3, [0, 0.5, 0.35])
+  for (const s of [-1, 1]) k.box('dark', [0.06, 0.06, 2.2], [s * 0.11, 0.34, 1.55])
+  k.box('black', [0.08, 0.08, 1.4], [0, 0.16, 1.3])
+  k.box('dark', [0.56, 0.07, 0.1], [0, 0.33, 2.55])
+  for (const s of [-1, 1]) {
+    k.box('hull', [0.04, 0.36, 0.62], [s * 0.26, 0.2, 2.75])
+    k.boxR('hull', [0.42, 0.035, 0.5], [s * 0.44, 0.5, 2.7], [0, 0, -s * 0.3])
+  }
+  k.box('black', [0.7, 0.05, 0.05], [0, 0.86, 0.35])
+  for (const s of [-1, 1]) k.boxR('black', [0.04, 0.4, 0.04], [s * 0.2, 0.72, 0.3], [0.3, 0, 0])
+  k.box('black', [0.75, 0.05, 0.12], [0, 0.2, -0.9])
+  k.box('whiteLight', [0.14, 0.08, 0.06], [0, 0.62, 0.72])
+  k.box('red', [0.2, 0.06, 0.05], [0, 0.5, -1.3])
+  // --- rider: black body glove, white armour plates, leaning into the wind
+  const lean = 0.6
+  k.box('black', [0.34, 0.2, 0.3], [0, 0.62, -0.72])
+  k.boxR('light', [0.4, 0.6, 0.26], [0, 1.05, -0.55], [lean, 0, 0])
+  k.boxR('black', [0.3, 0.36, 0.12], [0, 1.14, -0.72], [lean, 0, 0])
+  k.sphere('light', 0.15, [0, 1.43, -0.25], 12)
+  k.box('black', [0.2, 0.06, 0.1], [0, 1.4, -0.14])
+  for (const s of [-1, 1]) {
+    k.boxR('light', [0.16, 0.16, 0.5], [s * 0.22, 0.66, -0.45], [0.2, 0, 0])
+    k.boxR('black', [0.13, 0.46, 0.13], [s * 0.31, 0.44, -0.78], [-0.45, 0, 0])
+    k.box('light', [0.14, 0.1, 0.3], [s * 0.33, 0.22, -0.92])
+    k.boxR('black', [0.11, 0.11, 0.8], [s * 0.27, 1.07, -0.02], [0.48, 0, 0])
+    k.boxR('light', [0.13, 0.13, 0.3], [s * 0.29, 0.96, 0.2], [0.48, 0, 0])
+    k.boxR('light', [0.18, 0.12, 0.2], [s * 0.26, 1.28, -0.38], [lean, 0, 0])
+  }
+  return k
+}
+
+const BUILDERS: Record<VehicleType, () => Kit> = { hauler, speeder, tender, troop, bike }
+
+/** Types that also have a Blender-built model in public/models (the rest stay code-built). */
+export const HAS_BAKED: Record<VehicleType, boolean> = { hauler: true, speeder: true, tender: true, troop: true, bike: false }
+
+/** How hard a type leans into a turn, and the most it may lean (radians). */
+export const BANK: Record<VehicleType, { k: number; max: number }> = {
+  hauler: { k: 0.06, max: 0.35 }, tender: { k: 0.06, max: 0.35 }, troop: { k: 0.06, max: 0.35 }, speeder: { k: 0.22, max: 0.35 }, bike: { k: 0.3, max: 0.7 },
+}
 
 /** Hover height (pod underside above ground) per type. */
-export const HOVER: Record<VehicleType, number> = { hauler: 0.7, speeder: 0.9, tender: 0.65, troop: 0.7 }
+export const HOVER: Record<VehicleType, number> = { hauler: 0.7, speeder: 0.9, tender: 0.65, troop: 0.7, bike: 0.8 }
 
 /** Flat colours used instead of the textured world materials (vehicles are small; 2 draw calls per type). */
 const BODY: Partial<Record<MatKey, string>> = {

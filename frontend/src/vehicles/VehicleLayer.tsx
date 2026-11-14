@@ -1,6 +1,6 @@
 // Garrison motor pool: repulsor vehicles driving the base's roads, plus the animated gate booms.
 // Each vehicle type is one merged geometry per material, drawn as an InstancedMesh, so the whole
-// fleet costs 8 draw calls (body + glow per type) regardless of how many vehicles are out.
+// fleet costs two draw calls per type (body + glow) regardless of how many vehicles are out.
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -9,7 +9,7 @@ import { Kit } from '../world/kit'
 import { GATES, PLATEAU_RADIUS } from '../world/layout'
 import { MAT } from '../world/materials'
 import { makeTerrainSampler } from '../world/terrainSampler'
-import { HOVER, buildVehicle, loadBakedVehicle, vehicleMaterials, type BakedVehicle } from './models'
+import { BANK, HAS_BAKED, HOVER, buildVehicle, loadBakedVehicle, vehicleMaterials, type BakedVehicle } from './models'
 import { Follower, UNITS, routes, type Pose, type VehicleType } from './routes'
 
 interface Slot { type: VehicleType; index: number; phase: number; yaw: number; roll: number; y: number }
@@ -34,7 +34,7 @@ export function VehicleLayer({ visible = true }: { visible?: boolean }) {
       spec: u,
       f: new Follower(R[u.route], { s: u.s, delay: u.delay, dwellA: u.dwellA, dwellB: u.dwellB, members: u.types.length, gap: u.gap }),
     }))
-    const counts: Record<VehicleType, number> = { hauler: 0, speeder: 0, tender: 0, troop: 0 }
+    const counts: Record<VehicleType, number> = { hauler: 0, speeder: 0, tender: 0, troop: 0, bike: 0 }
     const slots: Slot[][] = units.map((u, ui) => u.spec.types.map((type, k) => ({ type, index: counts[type]++, phase: ui * 1.7 + k * 0.9, yaw: NaN, roll: 0, y: 0 })))
     return { units, slots, counts }
   }, [full])
@@ -52,7 +52,7 @@ export function VehicleLayer({ visible = true }: { visible?: boolean }) {
     if (!full) { setBaked({}); return }
     let live = true
     for (const t of Object.keys(counts) as VehicleType[]) {
-      if (counts[t] === 0) continue
+      if (counts[t] === 0 || !HAS_BAKED[t]) continue
       loadBakedVehicle(t).then((b) => { if (live) setBaked((prev) => ({ ...prev, [t]: b })) })
         .catch((e) => console.warn(`[vehicles] ${t}: keeping the code-built model:`, e))
     }
@@ -85,8 +85,8 @@ export function VehicleLayer({ visible = true }: { visible?: boolean }) {
         dy = Math.atan2(Math.sin(dy), Math.cos(dy))
         const yawRate = dy / Math.max(dt, 1e-3)
         slot.yaw += dy * Math.min(1, dt * 6)
-        const bankK = slot.type === 'speeder' ? 0.22 : 0.06
-        slot.roll += (THREE.MathUtils.clamp(-yawRate * p.speed * bankK * 0.1, -0.35, 0.35) - slot.roll) * Math.min(1, dt * 3)
+        const bank = BANK[slot.type]
+        slot.roll += (THREE.MathUtils.clamp(-yawRate * p.speed * bank.k * 0.1, -bank.max, bank.max) - slot.roll) * Math.min(1, dt * 3)
         // ground + slope pitch outside the plateau
         const fx = Math.sin(slot.yaw) * 4
         const fz = Math.cos(slot.yaw) * 4

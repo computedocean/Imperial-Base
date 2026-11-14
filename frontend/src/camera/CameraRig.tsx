@@ -297,7 +297,7 @@ function tourShots(id: TourId): Shot[] {
           const s = sim.shuttle.state
           const look = s.visible ? s.pos.clone().add(V(0, 6, 0)) : V(pad.x, pad.y + 10, pad.z)
           const near = s.visible && (s.phase === 'descent' || s.phase === 'landed' || s.phase === 'liftoff')
-          const pos = near ? V(pad.x + 55, pad.y + 14, pad.z + 48) : V(pad.x + 150, 60, pad.z - 160)
+          const pos = near ? V(pad.x + 55, pad.y + 14, pad.z + 48) : V(pad.x + 130, 55, pad.z + 40)
           return { pos, look }
         },
       }]

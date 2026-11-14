@@ -13,6 +13,8 @@ export interface QualitySettings {
   dpr: number
   shadows: boolean
   shadowMapSize: number
+  /** nested sun shadow maps: 1 = one map around the view focus, more reach further out (see sunCascades.ts) */
+  shadowCascades: number
   terrainSegments: number
   crowd: number
   bloom: boolean
@@ -30,10 +32,10 @@ export interface QualitySettings {
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
-  low: { dpr: 0.75, shadows: false, shadowMapSize: 512, terrainSegments: 160, crowd: 50, bloom: false, antialias: false, dust: 0, drawDistance: 9000, shadowRadius: 0, post: 'none', composerMsaa: 0, anisotropy: 2 },
-  medium: { dpr: 1, shadows: true, shadowMapSize: 1024, terrainSegments: 256, crowd: 100, bloom: true, antialias: false, dust: 300, drawDistance: 12000, shadowRadius: 2, post: 'basic', composerMsaa: 0, anisotropy: 4 },
-  high: { dpr: 1.25, shadows: true, shadowMapSize: 2048, terrainSegments: 384, crowd: 150, bloom: true, antialias: false, dust: 800, drawDistance: 16000, shadowRadius: 2.5, post: 'full', composerMsaa: 0, anisotropy: 8 },
-  cinematic: { dpr: 1.5, shadows: true, shadowMapSize: 4096, terrainSegments: 512, crowd: 200, bloom: true, antialias: false, dust: 1500, drawDistance: 20000, shadowRadius: 3, post: 'full', composerMsaa: 4, anisotropy: 16 },
+  low: { dpr: 0.75, shadows: false, shadowMapSize: 512, shadowCascades: 1, terrainSegments: 160, crowd: 50, bloom: false, antialias: false, dust: 0, drawDistance: 9000, shadowRadius: 0, post: 'none', composerMsaa: 0, anisotropy: 2 },
+  medium: { dpr: 1, shadows: true, shadowMapSize: 1024, shadowCascades: 2, terrainSegments: 256, crowd: 100, bloom: true, antialias: false, dust: 300, drawDistance: 12000, shadowRadius: 2, post: 'basic', composerMsaa: 0, anisotropy: 4 },
+  high: { dpr: 1.25, shadows: true, shadowMapSize: 2048, shadowCascades: 3, terrainSegments: 384, crowd: 150, bloom: true, antialias: false, dust: 800, drawDistance: 16000, shadowRadius: 2.5, post: 'full', composerMsaa: 0, anisotropy: 8 },
+  cinematic: { dpr: 1.5, shadows: true, shadowMapSize: 4096, shadowCascades: 3, terrainSegments: 512, crowd: 200, bloom: true, antialias: false, dust: 1500, drawDistance: 20000, shadowRadius: 3, post: 'full', composerMsaa: 4, anisotropy: 16 },
 }
 
 export type Selection =

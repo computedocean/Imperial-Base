@@ -482,7 +482,10 @@ export function apronMacro(): THREE.Texture {
   g.strokeStyle = yellow
   g.lineWidth = 0.6 * m
   g.setLineDash([])
-  g.beginPath(); g.moveTo(px(HANGAR_DOOR.x + 2), pz(HANGAR_DOOR.z)); g.lineTo(px(PADS[0].x - PADS[0].radius - 6), pz(PADS[0].z)); g.stroke()
+  // taxi line from the hangar door to the main platform, only while the platform stands in front of the hangar
+  if (Math.hypot(PADS[0].x - HANGAR_DOOR.x, PADS[0].z - HANGAR_DOOR.z) < 150) {
+    g.beginPath(); g.moveTo(px(HANGAR_DOOR.x + 2), pz(HANGAR_DOOR.z)); g.lineTo(px(PADS[0].x - PADS[0].radius - 6), pz(PADS[0].z)); g.stroke()
+  }
   // red no-go borders around ground pads
   g.strokeStyle = 'rgba(200,60,40,0.85)'
   g.lineWidth = 0.7 * m

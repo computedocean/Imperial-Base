@@ -178,6 +178,17 @@ function padRadius(x: number, z: number): number {
 
 const APRON_CENTER = { x: -175, z: 20 }
 const HANGAR_EXIT = { x: HANGAR_DOOR.x + 4, z: HANGAR_DOOR.z }
+const crewDoorPt = { x: 0, z: 0 }
+/**
+ * Where the shuttle service team appears and leaves. A platform in front of the hangar is served from
+ * the hangar door; one standing elsewhere is served from its own stair tower (east edge of the deck),
+ * because the team must reach the craft well inside the 45 s it stays on the ground.
+ */
+function crewDoor(pad: { x: number; z: number }, padR: number) {
+  if (Math.hypot(pad.x - HANGAR_EXIT.x, pad.z - HANGAR_EXIT.z) < 110) { crewDoorPt.x = HANGAR_EXIT.x; crewDoorPt.z = HANGAR_EXIT.z }
+  else { crewDoorPt.x = pad.x + padR - 3; crewDoorPt.z = pad.z - 12 }
+  return crewDoorPt
+}
 
 export function createCrowdSim(opts: { count: number; seed: number }): CrowdSim {
   const r = rng(opts.seed)
@@ -488,9 +499,10 @@ export function createCrowdSim(opts: { count: number; seed: number }): CrowdSim 
         if (s.timer > s.delay) {
           s.state = 'out'
           m.visible = true
-          m.x = HANGAR_EXIT.x + (s.slot - shuttleN / 2) * 1.2
-          m.z = HANGAR_EXIT.z + ((s.slot % 2) - 0.5) * 2
-          m.y = 0
+          const door = crewDoor(pad, padR)
+          m.x = door.x + ((s.slot % 2) - 0.5) * 2
+          m.z = door.z + (s.slot - shuttleN / 2) * 1.2
+          m.y = pad.y * smoothstep(padR + 14, padR - 1, Math.hypot(m.x - pad.x, m.z - pad.z))
           m.heading = Math.PI / 2
         }
       } else s.timer = 0
@@ -519,8 +531,9 @@ export function createCrowdSim(opts: { count: number; seed: number }): CrowdSim 
       tx = tmpPt.x
       tz = tmpPt.z
     } else {
-      tx = HANGAR_EXIT.x
-      tz = HANGAR_EXIT.z + (s.slot - shuttleN / 2) * 1.5
+      const door = crewDoor(pad, padR)
+      tx = door.x
+      tz = door.z + (s.slot - shuttleN / 2) * 1.5
     }
     const dx = tx - m.x, dz = tz - m.z
     const d = Math.hypot(dx, dz)

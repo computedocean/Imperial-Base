@@ -140,14 +140,15 @@ const approachPts = [
     new THREE.Vector3(-1500, 560, -1250),
     new THREE.Vector3(-780, 300, -470),
   ], 160), 160),
-  new THREE.Vector3(-380, 150, -90),
-  new THREE.Vector3(-215, 86, 12),
+  // swing round the west side of the base, past the hangar, and in over the quarters
+  new THREE.Vector3(-560, 200, 40),
+  new THREE.Vector3(-330, 112, 270),
   new THREE.Vector3(MAIN_PAD.x, MAIN_PAD.y + HOVER, MAIN_PAD.z),
 ]
 
 const climbPts = [
   new THREE.Vector3(MAIN_PAD.x, MAIN_PAD.y + HOVER + 14, MAIN_PAD.z),
-  new THREE.Vector3(-150, 120, 240),
+  new THREE.Vector3(-120, 125, 540),
   ...clearSpline(liftAboveTerrain([
     new THREE.Vector3(-330, 330, 880),
     new THREE.Vector3(-900, 720, 2300),

@@ -4,6 +4,7 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { Kit } from '../world/kit'
 import { KitMesh } from '../world/Structures'
+import type { MatKey } from '../world/materials'
 import { INTERIORS, type InteriorLayout, type Station } from './layouts'
 import { useStore } from '../state/store'
 import { HoloTactical } from './HoloTactical'
@@ -18,20 +19,85 @@ function stationProps(k: Kit, s: Station, ox: number, oy: number, oz: number) {
   const sn = Math.sin(r)
   // local (lx, lz) -> world, rotated by station rot
   const P = (lx: number, ly: number, lz: number): [number, number, number] => [x + lx * c + lz * sn, oy + ly, z - lx * sn + lz * c]
+  // A part tilted about the station's own left-right axis (positive = the edge facing the operator drops),
+  // then turned with the station. Kit's own rotation tilts about the world axis, which is wrong for turned stations.
+  const tilted = (mat: MatKey, g: THREE.BufferGeometry, lx: number, ly: number, lz: number, tilt: number) => {
+    g.rotateX(tilt)
+    k.add(mat, g, P(lx, ly, lz), [0, r, 0])
+  }
+  // steady pseudo-random pick so every station gets its own pattern of lit controls
+  let seed = Math.abs(Math.round(s.x * 7 + s.z * 13)) + s.id.length * 31
+  const pick = <T,>(list: T[]) => list[(seed = (seed * 1103515245 + 12345) & 0x7fffffff) % list.length]
+  const LIT: MatKey[] = ['red', 'whiteLight', 'whiteLight', 'amber', 'holo', 'black', 'black']
+  /**
+   * Sloped control deck: a black panel angled towards the operator, covered in rows of small lit keys,
+   * with a round scope in the middle. The deck is `width` wide; its centre is at (cx, cy, cz).
+   */
+  const controlDeck = (width: number, cx: number, cy: number, cz: number, depth = 0.95, tilt = 0.3) => {
+    const sn2 = Math.sin(tilt)
+    const cs2 = Math.cos(tilt)
+    const on = (d: number, lift: number): [number, number] => [cy + lift * cs2 - d * sn2, cz + lift * sn2 + d * cs2]
+    tilted('black', new THREE.BoxGeometry(width, 0.08, depth), cx, cy, cz, tilt)
+    const rows = [-0.3, -0.12, 0.06, 0.24]
+    for (const d of rows) {
+      for (let x = -width / 2 + 0.2; x <= width / 2 - 0.2 + 1e-6; x += 0.2) {
+        if (Math.abs(x) < 0.42 && d < 0.2) continue // room for the scope
+        const mat = pick(LIT)
+        const [y, z] = on(d, 0.05)
+        tilted(mat, new THREE.BoxGeometry(0.13, 0.025, 0.1), cx + x, y, z, tilt)
+      }
+    }
+    const [sy, sz] = on(-0.1, 0.05)
+    tilted('dark', new THREE.CylinderGeometry(0.33, 0.36, 0.05, 20), cx, sy, sz, tilt)
+    const [gy, gz] = on(-0.1, 0.085)
+    tilted('holo', new THREE.CylinderGeometry(0.27, 0.27, 0.02, 20), cx, gy, gz, tilt)
+    tilted('red', new THREE.BoxGeometry(0.5, 0.012, 0.012), cx, gy + 0.012, gz, tilt)
+    tilted('red', new THREE.BoxGeometry(0.012, 0.012, 0.5), cx, gy + 0.012, gz, tilt)
+  }
+  /** Upright indicator bank: a grid of small lights on a vertical face at local z. */
+  const lightBank = (cx: number, y0: number, lz: number, cols: number, rowsN: number, dx = 0.16, dy = 0.14) => {
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rowsN; j++) {
+      const mat = pick(LIT)
+      if (mat === 'black') continue
+      k.boxR(mat, [0.1, 0.07, 0.03], P(cx + (i - (cols - 1) / 2) * dx, y0 + j * dy, lz), [0, r, 0], 2)
+    }
+  }
   switch (s.type) {
-    case 'console':
-      k.boxR('dark', [3.2, 0.9, 1.3], P(0, 0.45, -0.6), [0, r, 0], 2)
-      k.boxR('black', [3.4, 0.08, 1.4], P(0, 0.94, -0.6), [0, r, 0], 2)
-      k.boxR('holo', [1.3, 0.75, 0.04], P(-0.75, 1.5, -1.0), [-0.25, r, 0], 2)
-      k.boxR('holo', [1.3, 0.75, 0.04], P(0.75, 1.5, -1.0), [-0.25, r, 0], 2)
-      k.boxR('black', [0.7, 0.5, 0.7], P(0, 0.25, 0.7), [0, r, 0], 2)
-      k.boxR('black', [0.7, 0.7, 0.12], P(0, 0.85, 1.0), [0, r, 0], 2)
+    case 'console': {
+      // Imperial duty console: the operator stands at a sloped key deck under an upright bank of scopes and
+      // indicator lights, flanked by two light pylons. No chair: crew stand their watch.
+      k.boxR('black', [3.6, 0.2, 1.8], P(0, 0.1, -0.6), [0, r, 0], 2)
+      k.boxR('dark', [3.2, 0.8, 1.0], P(0, 0.6, -0.85), [0, r, 0], 2)
+      k.boxR('black', [3.0, 0.5, 0.06], P(0, 0.55, -0.33), [0, r, 0], 2)
+      k.boxR('amber', [2.6, 0.03, 0.02], P(0, 0.82, -0.29), [0, r, 0], 2)
+      controlDeck(3.2, 0, 1.06, -0.5)
+      // upright back panel
+      k.boxR('dark', [3.2, 1.15, 0.3], P(0, 1.6, -1.3), [0, r, 0], 2)
+      k.boxR('black', [3.3, 0.12, 0.42], P(0, 2.22, -1.26), [0, r, 0], 2)
+      for (const sx of [-1, 1]) {
+        k.boxR('black', [0.95, 0.62, 0.04], P(sx * 0.98, 1.68, -1.14), [0, r, 0], 2)
+        k.boxR('holo', [0.85, 0.52, 0.03], P(sx * 0.98, 1.68, -1.12), [0, r, 0], 2)
+        // light pylons
+        k.boxR('black', [0.22, 2.3, 0.55], P(sx * 1.75, 1.15, -1.2), [0, r, 0], 2)
+        k.boxR('whiteLight', [0.05, 1.3, 0.03], P(sx * 1.75, 1.35, -0.91), [0, r, 0], 2)
+        k.boxR('red', [0.12, 0.08, 0.03], P(sx * 1.75, 2.15, -0.91), [0, r, 0], 2)
+      }
+      lightBank(0, 1.42, -1.13, 5, 5)
+      k.boxR('whiteLight', [2.9, 0.04, 0.03], P(0, 1.2, -1.13), [0, r, 0], 2)
       break
-    case 'terminal':
-      k.boxR('dark', [1.1, 1.3, 0.7], P(0, 0.65, -0.4), [0, r, 0], 2)
-      k.boxR('holo', [1.0, 0.7, 0.04], P(0, 1.65, -0.55), [-0.35, r, 0], 2)
-      k.boxR('amber', [0.9, 0.04, 0.04], P(0, 1.31, -0.05), [0, r, 0], 2)
+    }
+    case 'terminal': {
+      // data terminal: a slim black column with a round scope, a short key shelf and a light ladder
+      k.boxR('black', [1.3, 0.16, 1.0], P(0, 0.08, -0.4), [0, r, 0], 2)
+      k.boxR('dark', [1.1, 2.0, 0.6], P(0, 1.16, -0.5), [0, r, 0], 2)
+      k.boxR('black', [1.2, 0.1, 0.7], P(0, 2.2, -0.48), [0, r, 0], 2)
+      controlDeck(1.0, 0, 1.05, -0.02, 0.5, 0.45)
+      tilted('black', new THREE.CylinderGeometry(0.36, 0.36, 0.05, 20), 0, 1.72, -0.19, Math.PI / 2)
+      tilted('holo', new THREE.CylinderGeometry(0.3, 0.3, 0.02, 20), 0, 1.72, -0.16, Math.PI / 2)
+      k.boxR('amber', [0.9, 0.04, 0.03], P(0, 1.3, -0.19), [0, r, 0], 2)
+      lightBank(0, 0.4, -0.19, 4, 4, 0.18, 0.13)
       break
+    }
     case 'holotable':
       k.cyl('dark', 3.2, 3.6, 0.9, [x, oy, z], 24)
       k.cyl('black', 3.0, 3.0, 0.08, [x, oy + 0.9, z], 24)
@@ -62,8 +128,13 @@ function stationProps(k: Kit, s: Station, ox: number, oy: number, oz: number) {
       k.boxR('holo', [0.8, 0.4, 0.03], P(0.9, 1.3, 0.11), [0, r, 0], 2)
       break
     case 'security':
-      k.boxR('dark', [6, 0.9, 1.3], P(0, 0.45, -0.6), [0, r, 0], 2)
+      // watch desk: a long key deck under a wall of surveillance scopes
+      k.boxR('black', [6.4, 0.2, 1.8], P(0, 0.1, -0.6), [0, r, 0], 2)
+      k.boxR('dark', [6, 0.8, 1.0], P(0, 0.6, -0.85), [0, r, 0], 2)
+      controlDeck(6, 0, 1.06, -0.5)
+      k.boxR('black', [6.2, 2.6, 0.2], P(0, 2.5, -2.12), [0, r, 0], 2)
       for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) k.boxR('holo', [1.8, 1.0, 0.05], P(-2 + i * 2, 2 + j * 1.1, -2), [0, r, 0], 2)
+      k.boxR('red', [6.0, 0.05, 0.03], P(0, 1.3, -2.0), [0, r, 0], 2)
       break
     case 'lounge':
       break

@@ -129,7 +129,8 @@ export const facilityById = Object.fromEntries(FACILITIES.map((f) => [f.id, f]))
 export interface Pad { id: string; name: string; x: number; z: number; y: number; radius: number }
 
 export const PADS: Pad[] = [
-  { id: 'main', name: 'Main Landing Platform', x: -125, z: 20, y: 7, radius: 34 },
+  // out in the open beside the North Gate road: clear of every building, road and the other pads
+  { id: 'main', name: 'Main Landing Platform', x: -80, z: 340, y: 7, radius: 34 },
   { id: 'pad2', name: 'Secondary Pad 2', x: -135, z: -120, y: 0.4, radius: 18 },
   { id: 'pad3', name: 'Secondary Pad 3', x: -135, z: 160, y: 0.4, radius: 18 },
 ]

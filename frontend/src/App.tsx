@@ -31,7 +31,7 @@ export default function App() {
         key={`${quality}`}
         shadows={q.shadows ? { type: THREE.PCFShadowMap } : false}
         dpr={Math.min(q.dpr, window.devicePixelRatio || 1) * (quality === 'cinematic' ? 1.25 : 1)}
-        gl={{ antialias: q.antialias, logarithmicDepthBuffer: true, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
+        gl={{ antialias: q.antialias, logarithmicDepthBuffer: true, powerPreference: 'high-performance', toneMapping: THREE.AgXToneMapping, toneMappingExposure: 1.05 }}
         camera={{ fov: 55, near: 0.3, far: 40000, position: [620, 330, 760] }}
         onPointerMissed={() => useStore.getState().select(null)}
       >
