@@ -3,13 +3,27 @@
 ## Automated suites
 
 ```bat
-backend\.venv\Scripts\python -m pytest -q backend\tests     :: 20 tests
-cd frontend && npx vitest run                               :: 65 tests
+backend\.venv\Scripts\python -m pytest -q backend\tests     :: 33 tests
+cd frontend && npx vitest run                               :: 111 tests in 15 files
 cd frontend && npx tsc --noEmit -p .                         :: strict typecheck
 ```
 
-(`test.cmd` wraps the three. The commands were run individually during development; the `.cmd` wrapper
-itself was not executed in that environment.)
+`test.cmd` wraps the three. Last full run: 2026-11-20, `test.cmd` printed ALL TESTS PASSED
+(33 backend, 111 frontend, typecheck clean). The per-file lists below were written as each suite was added
+and may lag the current totals.
+
+### Backend — `backend/tests/test_orders.py` (13 passing)
+
+Runs the orders manager against a fake `claude` CLI, so no real agent starts:
+
+* an order runs in the fixed folder and its reply reaches the chat; a follow-up resumes the same conversation;
+* a busy agent refuses a second message and can be stopped; refused tool calls and failed runs are reported in
+  the chat; a run that dies without a result is marked failed;
+* live updates reach the WebSocket; input limits (8000 characters); at most four agents work at once;
+* requests and sockets from other sites are refused, and conversations are never written to the database;
+* `IMPERIAL_ORDERS=0` switches orders off; tool descriptions keep detail low; unknown records are ignored.
+
+`frontend/src/lib/orders.test.ts` (4) covers the chat's client-side helpers.
 
 ### Backend — `backend/tests/test_backend.py` (20 passing)
 
@@ -21,7 +35,7 @@ itself was not executed in that environment.)
   agents report unknown activity; injected subagent reports do not overwrite the Commander's orders.
 * **Ingestion:** unknown fields rejected; transcript usage counters (dedupe of streamed messages, model id,
   missing file).
-* **API/WebSocket:** ingest + snapshot + agent detail + commands disabled; live WebSocket delta after ingest.
+* **API/WebSocket:** ingest + snapshot + agent detail + the commands endpoint; live WebSocket delta after ingest.
 * **Spool tailing:** incremental reads, partial-line handling, truncation/rotation restart.
 * **Persistence:** state rebuilt identically from SQLite after a restart.
 

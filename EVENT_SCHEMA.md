@@ -78,5 +78,12 @@ cache_creation_input_tokens, cache_read_input_tokens, total_tokens, messages}`, 
 | GET | /api/schema | observed hook payload keys per event |
 | GET | /api/system | CPU / memory / GPU availability / Claude process count / Docker containers |
 | POST | /api/ingest | loopback-only direct ingestion (same validation) — used by tests |
-| GET | /api/commands | `{"enabled": false}` — observation-only |
-| WS | /ws | server → client: `snapshot`, `event {event, agents[], tasks[]}`, `system`; client → server: `ping` |
+| GET | /api/commands | `{"enabled", "available": ["orders"], "note"}` — orders are the only command |
+| GET | /api/orders | orders status (`enabled`, `reason`, `folder`, `max_running`) + every conversation |
+| POST | /api/orders | `{"text"}` — start a new conversation (one agent) |
+| POST | /api/orders/{id}/messages | `{"text"}` — reply once the agent has finished its turn |
+| POST | /api/orders/{id}/stop | stop the agent while it works |
+| WS | /ws | server → client: `snapshot`, `event {event, agents[], tasks[]}`, `system`, `orders`, `order`; client → server: `ping` |
+
+The order endpoints accept only this machine talking to itself: caller address, Host and Origin are checked and
+the body must be JSON. Text is limited to 8000 characters. Conversations live in memory and are never stored.

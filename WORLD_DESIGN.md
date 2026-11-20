@@ -43,7 +43,8 @@ personnel. The perimeter wall top is a patrol walkway.
 Gunmetal and pale-grey panel plating (procedural plate/seam/rivet/vent texture), concrete slab, warm window bands,
 **red** blinking beacons, **amber** service and warning strips, restrained **blue** holograms — no neon overload.
 Golden-hour key light with long shadows, cool hemisphere fill, a soft generated environment map for metals,
-ACES tone mapping, bloom + vignette on High/Cinematic. Every building has a silhouette of its own (stepped
+AgX tone mapping followed by a generated colour-grade LUT (`world/grade.ts`), bloom + vignette, and nested sun
+shadow cascades fitted to the camera's focus (`world/sunCascades.ts`). Every building has a silhouette of its own (stepped
 citadel with T-shaped bridge, ribbed engineering block, hex operations hall with holo rings, dome cluster,
 fortified security block with turret, vent stacks over the bunker).
 

@@ -51,7 +51,7 @@ Landing & Transport ✅ (main elevated platform, 2 pads, depot, cargo yard, movi
   normal + roughness maps, plus a base-wide macro layer: contact grime at building feet, pad/hangar scorch,
   exhaust streaks, tyre arcs, painted door hatching, taxi line, red pad borders, wind-blown sand at the walls);
   sand-ripple normals on the desert; normal maps on all building panel/concrete materials; lamp light pools
-  at dusk/night; soft dust sprites; post stack per preset (SMAA, bloom, grade, ACES, vignette; N8AO on
+  at dusk/night; soft dust sprites; post stack per preset (SMAA, bloom, AgX tone map + LUT grade, vignette; N8AO on
   High/Cinematic). See PERFORMANCE.md.
 
 * ✅ Ground vehicles (`src/vehicles/`): 4 original repulsor designs (cargo hauler, patrol speeder, fuel tender,
@@ -187,6 +187,21 @@ New scenery (all simulated, all original geometry):
 Not verified on 2026-11-10: real-GPU frame rate with the new scenery (the preview pane was throttled while
 testing), the new sounds by ear, and `start.cmd` end to end (its stale-build check was run on its own).
 
+## Added 2026-11-13 to 2026-11-20
+
+* ✅ **Look**: AgX tone mapping plus a per-time-of-day colour-grade look-up table (`world/grade.ts`: split
+  toning, contrast, saturation). Two or three nested sun shadow maps around the view focus
+  (`world/sunCascades.ts`), so distant buildings cast shadows too. Tests: `grade.test.ts`, `sunCascades.test.ts`.
+* ✅ **Shuttle pad** moved into the open beside the North Gate road; the shuttle and its ground crew re-routed.
+* ✅ **Speeder bike patrol** loops out of the East Gate and back in through the North Gate.
+* ✅ **Consoles**: agent consoles, terminals and the security desk rebuilt with sloped key decks, scopes and lights.
+* ✅ **`stop.cmd`** ends whatever `start.cmd` / `dev.cmd` left listening on ports 8742 and 5273.
+* ✅ **Orders chat** (Missions tab, `backend/app/orders.py`, `ui/OrdersChat.tsx`): the Commander types an order and
+  a headless Claude Code agent carries it out in this project's folder only, with `acceptEdits` permissions. Up to
+  four at once; reply after a turn, or stop a running agent. Local-only endpoints, conversations in memory only.
+  Tests: `backend/tests/test_orders.py` (13), `frontend/src/lib/orders.test.ts` (4).
+  Not verified here: a long real order run end to end through the browser chat.
+
 ## Known limitations
 
 * **Hook not installed globally yet.** Run `python scripts\install_hooks.py` once (see README). Until then
@@ -201,7 +216,8 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 * Token usage appears after a turn (Stop/SubagentStop) — mid-turn usage is not reported by hooks.
 * Agents from sessions without SessionEnd (killed terminals) become *stale* after 15 min and are hidden after 12 h.
 * Real-GPU FPS not measured in this environment.
-* Observation-only: no command dispatch to agents (by design).
+* Commands reach only agents started from the Orders chat; sessions opened elsewhere are observed only (by design).
+  Order conversations are lost when the server stops.
 * Cursor agents report status, tools and prompts, but not token usage (Cursor's counters are not verified).
 * The walker and the duellists do not react to vehicles or personnel crossing their path.
 * The picket TIE appears at range without a launch sequence; interceptors still only chase.
@@ -209,8 +225,9 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 
 ## Repository state
 
-`C:\Projects\Imperial-Base` is a fresh git repository (`git init`), **no commits made** — commit when you are
-happy with it. `.gitignore` excludes `node_modules`, `dist`, `.venv` and `backend/data` (the SQLite database).
+Published at https://github.com/computedocean/Imperial-Base. Day-to-day work happens on feature branches
+(currently `jedi-temple`) and is merged into `main`. `.gitignore` excludes `node_modules`, `dist`, `.venv` and
+`backend/data` (the SQLite database).
 
 ## March leader: generated figure (trial of Tripo)
 

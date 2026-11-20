@@ -8,3 +8,6 @@ backend/data/
 test-results/
 *.log
 *.tsbuildinfo
+
+# graphify knowledge graph (local, rebuildable)
+graphify-out/

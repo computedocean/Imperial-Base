@@ -100,11 +100,18 @@ has the same name. Role/department by `agent_type`:
   the base and is visible from outside); dashed and dim once the child is done.
 * Exterior: each building shows a beacon "N LIVE AGENTS" with one status pip per agent.
 
-## Future command support (not implemented)
+## Orders (the one command channel)
 
-The backend exposes `GET /api/commands` → `{"enabled": false}`. Any future command capability must use a real,
-supported Claude Code integration (e.g. the Agent SDK in a separate, explicitly authorised process) and require
-an explicit Commander confirmation in the UI. Nothing in this codebase sends input to any agent.
+Sessions started elsewhere are observed only; nothing is ever sent to them. The base can command only the agents
+it starts itself, from the **Orders** chat (`backend/app/orders.py`):
+
+* each conversation runs the installed `claude` CLI headless (`claude -p`, resumed for follow-ups) in one fixed
+  folder, this project (`IMPERIAL_ORDERS_CWD`); the chat cannot choose another;
+* permission mode `acceptEdits`: file edits go through, anything else your Claude Code settings do not already
+  allow is refused by the CLI and reported in the chat;
+* up to four agents work at once; 30 conversations are kept, in memory only, never in the database;
+* the agent's own hook events make it appear in the world like any other agent;
+* `IMPERIAL_ORDERS=0` switches orders off, and `GET /api/commands` then lists nothing.
 
 ## Grok / other systems
 

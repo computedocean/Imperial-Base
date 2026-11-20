@@ -13,7 +13,7 @@ Target: Windows PC, 16 GB RAM, **Intel integrated graphics** (the development ma
 | Boulders | 150 | 450 | 450 | 450 |
 | Dust particles | 0 | 300 | 800 | 1500 |
 | Soft shadows (PCF radius) | – | 2 | 2.5 | 3 |
-| Post: SMAA + bloom + colour grade + ACES + vignette | – | ✓ | ✓ | ✓ |
+| Post: SMAA + bloom + AgX tone map + LUT colour grade + vignette | – | ✓ | ✓ | ✓ |
 | Post: N8AO ambient occlusion | – | – | ✓ (half-res) | ✓ (full-res) |
 | Composer MSAA | – | – (SMAA) | – (SMAA) | 4× |
 | Texture anisotropy | 2× | 4× | 8× | 16× |

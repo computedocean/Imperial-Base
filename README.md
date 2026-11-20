@@ -1,5 +1,7 @@
 # IMPERIAL BASE
 
+![Imperial Garrison Aurek-9 at golden hour, during an X-wing strafing run](docs/images/base-exterior.jpg)
+
 A living, explorable 3D Imperial-style planetary installation — **Imperial Garrison Aurek-9 on Ketrax Prime** —
 where **real Claude Code agents** appear as identifiable personnel working inside the base, while shuttles land,
 TIE-inspired fighters patrol and an unidentified X-wing-inspired contact crosses the horizon.
@@ -62,6 +64,8 @@ After changing frontend code, rebuild for `start.cmd`: `cd frontend && npx vite 
 
 ## Controls
 
+![The command HUD: agent roster, top bar and event feed over the live base](docs/images/base-hud.jpg)
+
 | Key / action | Effect |
 |---|---|
 | `1` Exterior | Free orbit camera (drag orbit, right-drag pan, wheel zoom) |
@@ -80,6 +84,12 @@ follow any aircraft.
 
 The same tab stages the **impounded freighter's escape** from Pad 3, follows the **heavy walker** on its perimeter
 patrol, and opens the **lightsaber duel** on Pad 2. Every X-wing flyby now ends with a picket TIE being shot down.
+
+**Orders** (bottom of the Missions tab): type an order and a Claude Code agent carries it out in the Imperial Base
+folder, and nowhere else. Each conversation is one agent; up to four can work at once, and you can reply to an
+agent once it has finished a turn or stop it while it works. File edits go through; any other action that your
+Claude Code settings do not already allow is refused and reported in the chat. Conversations are kept in memory
+only and are gone when the server stops. Set `IMPERIAL_ORDERS=0` to switch orders off.
 
 **Needs you**: when an agent waits for a permission or a turn fails, a banner and a pulsing top-bar pill appear and
 the browser tab title changes; click either to jump to that agent.
@@ -124,9 +134,3 @@ nameplate and appear in the roster. Decorative personnel have none of these. Fee
 | [TESTING.md](TESTING.md) | Test suites and what was verified how |
 | [SKILL_INVENTORY.md](SKILL_INVENTORY.md) | Capability assessment, skills/agents used |
 | [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | Definition-of-done checklist, known limitations |
-
-## Boundaries
-
-Imperial Base is standalone. It does not modify Hermes Mission Control, TRON, CAOS, DeepSeek, TradingBOT,
-OpenLIT or Agent HQ, and it does not orchestrate anything: it is **observation-only**
-(`GET /api/commands` reports `enabled: false`).
