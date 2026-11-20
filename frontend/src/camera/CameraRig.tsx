@@ -12,6 +12,7 @@ import { createDuelState, duelAt } from '../personnel/duelMoves'
 import { MARCH, toWorld } from '../personnel/marchPlan'
 import { HeroCharacter } from '../personnel/HeroCharacter'
 import { sim } from '../sim/world'
+import { vehicleState } from '../vehicles/VehicleLayer'
 import { useStore, type TourId } from '../state/store'
 import { FACILITIES, PADS, facilityById, obstacleBoxes, terrainHeight, type DepartmentId } from '../world/layout'
 
@@ -318,6 +319,22 @@ function tourShots(id: TourId): Shot[] {
         { from: [V(x - 38, y + 6, z + 24), V(x - 10, y + 4, z + 10), V(x + 24, y + 5, z - 20)], look: [V(x, y + 2, z - 10), V(x - 10, y + 1, z - 20), V(x + 26, y + 2, z + 10)], dur: 22, interior: 'bunker' },
       ]
     }
+    case 'bikes':
+      return [{
+        from: [], look: [], dur: 9999, interior: null,
+        // chase camera on the lead pair: behind, a little above and off to one side. The rig eases the
+        // camera towards its target, which would leave it far behind at speed, so the target is pushed
+        // ahead by the distance that easing loses (speed / easing rate).
+        dynamic: () => {
+          const b = vehicleState.poses.find((p) => p.type === 'bike')
+          if (!b) return { pos: V(150, 12, 40), look: V(150, 1, 0) }
+          const fx = Math.sin(b.yaw)
+          const fz = Math.cos(b.yaw)
+          const back = 11 - b.speed / 1.5
+          const ahead = -1 + b.speed / 3
+          return { pos: V(b.x - fx * back + fz * 2.4, b.y + 2.3, b.z - fz * back - fx * 2.4), look: V(b.x + fx * ahead, b.y + 0.9, b.z + fz * ahead) }
+        },
+      }]
     case 'march':
       return [{
         from: [], look: [], dur: 9999, interior: null,

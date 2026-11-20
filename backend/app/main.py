@@ -1,4 +1,8 @@
-"""Imperial Base backend — FastAPI + WebSockets, local-first, read-only observation of Claude Code."""
+"""Imperial Base backend — FastAPI + WebSockets, local-first.
+
+Observes Claude Code through hooks, and (since the Commander asked for it) can start agents in this
+project folder from the base's chat: see orders.py for the rules that apply to those.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -12,15 +16,49 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, system
 from .engine import Engine
+from .orders import OrderError, OrderManager, Runner
 from .store import Store
 
 
-def create_app(db_path: str | None = None, spool_path: str | None = None, start_tailer: bool = True) -> FastAPI:
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]", "testclient", "testserver"}
+
+
+def _hostname(value: str) -> str:
+    """Host part of a Host header or an Origin (scheme and port removed)."""
+    v = value.split("://", 1)[-1].split("/", 1)[0]
+    if v.startswith("["):
+        return v.split("]", 1)[0] + "]"
+    return v.rsplit(":", 1)[0] if ":" in v else v
+
+
+def require_local(request: Request) -> None:
+    """Refuse anything that is not this machine talking to itself.
+
+    Starting an agent is far more powerful than reading state, so three things are checked: the caller's
+    address, the Host header (a web page that points its own domain name at 127.0.0.1 still sends its
+    own name here), and the Origin header (a page on another site sends that site). The body must be
+    declared as JSON, which a cross-site form or a simple request cannot do without the browser asking first.
+    """
+    if request.client and request.client.host not in LOCAL_HOSTS:
+        raise HTTPException(403, "loopback only")
+    if _hostname(request.headers.get("host", "")) not in LOCAL_HOSTS:
+        raise HTTPException(403, "loopback only")
+    origin = request.headers.get("origin")
+    if origin and _hostname(origin) not in LOCAL_HOSTS:
+        raise HTTPException(403, "cross-site requests are refused")
+    if request.method == "POST" and not request.headers.get("content-type", "").lower().startswith("application/json"):
+        raise HTTPException(415, "send JSON")
+
+
+def create_app(db_path: str | None = None, spool_path: str | None = None, start_tailer: bool = True,
+               order_runner: Runner | None = None, orders_cwd: str | None = None) -> FastAPI:
     store = Store(db_path or config.DB_PATH)
     from pathlib import Path
 
     engine = Engine(store, Path(spool_path) if spool_path else config.SPOOL_PATH)
     clients: set[WebSocket] = set()
+    orders = OrderManager(Path(orders_cwd) if orders_cwd else config.ORDERS_CWD, engine.broadcast,
+                          runner=order_runner, enabled=config.ORDERS_ENABLED)
 
     async def system_loop() -> None:
         system.sample()  # prime psutil cpu_percent
@@ -39,9 +77,11 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
         yield
         for t in tasks:
             t.cancel()
+        await orders.shutdown()
 
     app = FastAPI(title="Imperial Base", version="0.1.0", lifespan=lifespan)
     app.state.engine = engine
+    app.state.orders = orders
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -109,22 +149,76 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
 
     @app.get("/api/commands")
     def commands() -> dict[str, Any]:
-        # Observation-only by design. Command dispatch will require a real, supported integration
-        # and explicit Commander authorisation; none is enabled.
-        return {"enabled": False, "available": [], "note": "Imperial Base is observation-only. No agent commands are implemented."}
+        st = orders.status()
+        return {"enabled": st["enabled"], "available": ["orders"] if st["enabled"] else [],
+                "note": "Orders start a Claude Code agent in the base's own folder. Everything else is observation only."}
+
+    # ---- orders: the Commander's chat (see orders.py)
+    async def order_text(request: Request) -> Any:
+        require_local(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            raise HTTPException(400, "send JSON")
+        return body.get("text") if isinstance(body, dict) else None
+
+    def refuse(e: OrderError) -> HTTPException:
+        return HTTPException(e.status, str(e))
+
+    @app.get("/api/orders")
+    def list_orders(request: Request) -> dict[str, Any]:
+        require_local(request)
+        return {**orders.status(), "orders": orders.list()}
+
+    @app.post("/api/orders")
+    async def new_order(request: Request) -> dict[str, Any]:
+        text = await order_text(request)
+        try:
+            return (await orders.start(text)).public()
+        except OrderError as e:
+            raise refuse(e)
+
+    @app.post("/api/orders/{order_id}/messages")
+    async def order_message(order_id: str, request: Request) -> dict[str, Any]:
+        text = await order_text(request)
+        try:
+            return (await orders.send(order_id, text)).public()
+        except OrderError as e:
+            raise refuse(e)
+
+    @app.post("/api/orders/{order_id}/stop")
+    async def order_stop(order_id: str, request: Request) -> dict[str, Any]:
+        require_local(request)
+        try:
+            return (await orders.stop(order_id)).public()
+        except OrderError as e:
+            raise refuse(e)
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
+        # Browsers let any web page open a websocket to any address, so the page's Origin is checked here.
+        # A page from another site (Origin differs from the Host it connected to) is refused outright.
+        host = _hostname(sock.headers.get("host", ""))
+        origin = sock.headers.get("origin")
+        if origin and _hostname(origin) != host:
+            await sock.close(code=1008)
+            return
+        # Conversations with agents go only to this machine talking to itself (same rule as the order endpoints).
+        local = host in LOCAL_HOSTS and (sock.client is None or sock.client.host in LOCAL_HOSTS)
         await sock.accept()
         clients.add(sock)
 
         async def push(msg: dict[str, Any]) -> None:
+            if not local and msg.get("type") in ("order", "orders"):
+                return
             await sock.send_json(msg)
 
         engine.listeners.add(push)
         try:
             await sock.send_json(engine.snapshot())
             await sock.send_json({"type": "system", "system": await asyncio.to_thread(system.sample)})
+            if local:
+                await sock.send_json({"type": "orders", **orders.status(), "orders": orders.list()})
             while True:
                 msg = await sock.receive_json()
                 if isinstance(msg, dict) and msg.get("type") == "ping":

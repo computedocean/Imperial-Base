@@ -165,13 +165,15 @@ def test_api_ingest_and_snapshot(client):
     assert len(snap["events"]) == 2
     a = client.get("/api/agents/session:S1").json()
     assert a["agent"]["assignment"] == "hi" and len(a["events"]) == 2
-    assert client.get("/api/commands").json()["enabled"] is False
+    cmds = client.get("/api/commands").json()
+    assert cmds["available"] == (["orders"] if cmds["enabled"] else [])  # orders are the only command
 
 
 def test_websocket_receives_live_events(client):
     with client.websocket_connect("/ws") as ws:
         assert ws.receive_json()["type"] == "snapshot"
         assert ws.receive_json()["type"] == "system"
+        assert ws.receive_json()["type"] == "orders"  # the Commander's chat state (see test_orders.py)
         client.post("/api/ingest", json=ev("SessionStart"))
         msg = ws.receive_json()
         assert msg["type"] == "event" and msg["agents"][0]["id"] == "session:S1"

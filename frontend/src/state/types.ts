@@ -95,3 +95,20 @@ export interface IngestStatus {
   ingested_this_run: number
   hook_installed: boolean
 }
+
+/** One conversation in the Commander's chat (backend/app/orders.py). Each is one agent. */
+export interface OrderMessage { role: 'commander' | 'agent' | 'tool' | 'notice'; text: string; ts: number }
+export interface OrderInfo {
+  id: string
+  session_id: string
+  /** the agent's id in the roster: session:<session_id> */
+  agent_id: string
+  title: string
+  status: 'running' | 'idle' | 'failed' | 'stopped'
+  created_at: number
+  updated_at: number
+  turns: number
+  messages: OrderMessage[]
+}
+/** Whether orders can be given, and where agents started from the chat work. */
+export interface OrdersInfo { enabled: boolean; reason: string | null; folder: string }

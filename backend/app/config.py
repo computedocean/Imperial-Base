@@ -18,3 +18,7 @@ SYSTEM_SAMPLE_SECONDS = float(os.environ.get("IMPERIAL_SYSTEM_SAMPLE", "5"))  # 
 STALE_AFTER_SECONDS = int(os.environ.get("IMPERIAL_STALE_AFTER", str(15 * 60)))
 MAX_EVENTS_KEPT = int(os.environ.get("IMPERIAL_MAX_EVENTS", "50000"))
 READ_TRANSCRIPT_USAGE = os.environ.get("IMPERIAL_READ_USAGE", "1") != "0"  # numbers + model name only
+
+# Orders: agents started from the base's chat. They work in this one folder and nowhere else.
+ORDERS_ENABLED = os.environ.get("IMPERIAL_ORDERS", "1") != "0"
+ORDERS_CWD = Path(os.environ.get("IMPERIAL_ORDERS_CWD", Path(__file__).resolve().parents[2]))

@@ -29,6 +29,24 @@
         "cd frontend && npx vite --port 5273 --host 127.0.0.1"
       ],
       "port": 5273
+    },
+    {
+      "name": "backend-qa",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set IMPERIAL_DB=%TEMP%\\imperial-qa.db&& backend\\.venv\\Scripts\\python.exe -m uvicorn --factory app.main:create_app --app-dir backend --host 127.0.0.1 --port 8743"
+      ],
+      "port": 8743
+    },
+    {
+      "name": "frontend-qa",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set IMPERIAL_BACKEND=http://127.0.0.1:8743&& cd frontend && npx vite --port 5274 --host 127.0.0.1"
+      ],
+      "port": 5274
     }
   ]
 }

@@ -38,6 +38,8 @@ export function connectLive(): () => void {
         if (flushTimer === undefined) flushTimer = window.setTimeout(flush, 50)
       }
       else if (msg.type === 'system') st.setSystem(msg.system)
+      else if (msg.type === 'orders') st.setOrders({ enabled: !!msg.enabled, reason: msg.reason ?? null, folder: msg.folder ?? '' }, msg.orders ?? [])
+      else if (msg.type === 'order' && msg.order) st.applyOrder(msg.order)
     }
     sock.onclose = () => {
       useStore.getState().setConnected(false)

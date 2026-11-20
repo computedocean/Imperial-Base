@@ -9,6 +9,7 @@ import { commands, useSimStatus } from '../sim/world'
 import { QUALITY, useStore, type CameraMode, type Quality, type RosterFilter, type TourId } from '../state/store'
 import type { AgentInfo, HookEvent, TaskInfo } from '../state/types'
 import { IconAlert, IconBranch, IconClock, IconClose, IconMoon, IconSun } from './icons'
+import { OrdersChat } from './OrdersChat'
 import { FACILITIES, PLANET, facilityById, type DepartmentId } from '../world/layout'
 
 /** Frames per second, read once a second from the renderer statistics the scene publishes. */
@@ -278,6 +279,7 @@ function MissionsPanel() {
   }).sort((a, b) => b.started_at - a.started_at).slice(0, 80), [tasks, agents, filter, q])
   const active = Object.values(tasks).filter((t) => t.status === 'in_progress').length
   return (
+    <>
     <div className="panel-body">
       <div className="panel-tools">
         <SearchField value={query} onChange={setQuery} label="Search missions" />
@@ -288,9 +290,11 @@ function MissionsPanel() {
         </div>
         <span className="tool-count">{active} active · {list.length} shown</span>
       </div>
-      {list.length === 0 && <div className="empty">{q || filter !== 'all' ? 'No missions match this filter.' : 'No missions recorded yet. A mission is a Commander prompt handled by a lead agent, or work delegated to a subagent.'}</div>}
+      {list.length === 0 && <div className="empty">{q || filter !== 'all' ? 'No missions match this filter.' : 'No missions recorded yet. Give an order in the box below, or prompt any Claude Code session: each becomes a mission.'}</div>}
       <AnimatePresence initial={false}>{list.map((t) => <TaskRow key={t.id} t={t} agent={agents[t.agent_id]} onClick={() => select({ kind: 'agent', id: t.agent_id })} />)}</AnimatePresence>
     </div>
+    <OrdersChat />
+    </>
   )
 }
 
@@ -448,7 +452,7 @@ function AircraftPanel() {
 
 const TOURS: { id: TourId; label: string }[] = [
   { id: 'flyover', label: 'Base flyover' }, { id: 'shuttle', label: 'Shuttle arrival' }, { id: 'hangar', label: 'Hangar' },
-  { id: 'command', label: 'Command chamber' }, { id: 'bunker', label: 'Server bunker' }, { id: 'agents', label: 'Agent activity' }, { id: 'duel', label: 'Lightsaber duel' }, { id: 'destroyer', label: 'Star Destroyer' }, { id: 'march', label: 'March on the Temple' },
+  { id: 'command', label: 'Command chamber' }, { id: 'bunker', label: 'Server bunker' }, { id: 'agents', label: 'Agent activity' }, { id: 'duel', label: 'Lightsaber duel' }, { id: 'destroyer', label: 'Star Destroyer' }, { id: 'march', label: 'March on the Temple' }, { id: 'bikes', label: 'Speeder bike patrol' },
 ]
 
 function FacilitiesPanel() {
@@ -690,7 +694,7 @@ export function HUD() {
   const { panel, setPanel, hudVisible } = useStore()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return
       const st = useStore.getState()
       const map: Record<string, CameraMode> = { Digit1: 'orbit', Digit2: 'tactical', Digit3: 'firstperson', Digit4: 'thirdperson', Digit5: 'cinematic' }
       if (map[e.code]) st.setCameraMode(map[e.code])

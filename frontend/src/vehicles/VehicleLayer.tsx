@@ -21,7 +21,7 @@ const _p = new THREE.Vector3()
 const _s = new THREE.Vector3(1, 1, 1)
 
 /** live vehicle positions (gate booms + QA read these) */
-export const vehicleState: { poses: { id: string; type: VehicleType; x: number; y: number; z: number; speed: number }[] } = { poses: [] }
+export const vehicleState: { poses: { id: string; type: VehicleType; x: number; y: number; z: number; yaw: number; speed: number }[] } = { poses: [] }
 
 export function VehicleLayer({ visible = true }: { visible?: boolean }) {
   const quality = useStore((s) => s.quality)
@@ -100,7 +100,7 @@ export function VehicleLayer({ visible = true }: { visible?: boolean }) {
         _m.compose(_p.set(p.x, y, p.z), _q, _s)
         meshes.current[`${slot.type}:body`]?.setMatrixAt(slot.index, _m)
         meshes.current[`${slot.type}:glow`]?.setMatrixAt(slot.index, _m)
-        poses.push({ id: `${u.spec.id}${u.spec.types.length > 1 ? `-${k}` : ''}`, type: slot.type, x: p.x, y, z: p.z, speed: p.speed })
+        poses.push({ id: `${u.spec.id}${u.spec.types.length > 1 ? `-${k}` : ''}`, type: slot.type, x: p.x, y, z: p.z, yaw: slot.yaw, speed: p.speed })
       })
     })
     for (const m of Object.values(meshes.current)) if (m) m.instanceMatrix.needsUpdate = true

@@ -41,8 +41,11 @@
   (`Registry.apply`). On restart the backend replays SQLite, so the UI state is reproducible and testable.
 * **Defence in depth on privacy.** The hook reduces payloads (no tool inputs/outputs, basenames only, redacted
   short excerpts); the backend accepts only an allow-list of keys and truncates strings.
-* **Observation-only.** No endpoint can send anything to an agent. `/api/commands` documents that. A future
-  command channel must use a supported Claude Code integration and explicit Commander authorisation.
+* **Observation first, one command channel.** Nothing can be sent to a session started elsewhere. The Commander
+  authorised one channel: orders (`backend/app/orders.py`), which start a headless `claude -p` run in the base's
+  own folder with `acceptEdits` permissions. The order endpoints accept only this machine talking to itself
+  (caller address, Host and Origin are checked, and the body must be declared as JSON), and conversations are
+  held in memory, never written to the database.
 * **Interiors live inside their buildings** at real world coordinates. Agents walk from the department door to
   a station; the shell is hidden while the camera is inside. The command chamber is the tower's bridge with
   clear glass onto the live base; the bunker is underground. Only the active interior is rendered.

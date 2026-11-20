@@ -1,10 +1,10 @@
 import { create } from 'zustand'
-import type { AgentInfo, HookEvent, IngestStatus, SystemInfo, TaskInfo } from './types'
+import type { AgentInfo, HookEvent, IngestStatus, OrderInfo, OrdersInfo, SystemInfo, TaskInfo } from './types'
 import type { DepartmentId } from '../world/layout'
 
 export type Quality = 'low' | 'medium' | 'high' | 'cinematic'
 export type CameraMode = 'orbit' | 'tactical' | 'firstperson' | 'thirdperson' | 'cinematic' | 'follow'
-export type TourId = 'flyover' | 'shuttle' | 'hangar' | 'command' | 'bunker' | 'agents' | 'duel' | 'destroyer' | 'march'
+export type TourId = 'flyover' | 'shuttle' | 'hangar' | 'command' | 'bunker' | 'agents' | 'duel' | 'destroyer' | 'march' | 'bikes'
 /** Lighting scenario. Independent of the quality preset. `N` cycles it. */
 export type TimeOfDay = 'golden' | 'dusk' | 'night'
 export const TIMES_OF_DAY: TimeOfDay[] = ['golden', 'dusk', 'night']
@@ -88,6 +88,11 @@ interface State {
   applyEvent(ev: HookEvent, agents: AgentInfo[], tasks: TaskInfo[]): void
   /** Apply several live updates in a single store update (one React render however many arrived). */
   applyEvents(batch: LiveUpdate[]): void
+  /** the Commander's chat: conversations by id, and whether orders can be given */
+  orders: Record<string, OrderInfo>
+  ordersInfo: OrdersInfo | null
+  setOrders(info: OrdersInfo, list: OrderInfo[]): void
+  applyOrder(o: OrderInfo): void
   setSystem(s: SystemInfo): void
   setConnected(c: boolean): void
 }
@@ -179,6 +184,15 @@ export const useStore = create<State>((set, get) => ({
     }
     const events = get().events.concat(batch.map((u) => u.event)).slice(-300)
     set({ agents: a, tasks: t, events, feed: news.length ? [...news, ...get().feed].slice(0, 120) : get().feed })
+  },
+  orders: {},
+  ordersInfo: null,
+  setOrders(info, list) { set({ ordersInfo: info, orders: Object.fromEntries(list.map((o) => [o.id, o])) }) },
+  // live updates and the reply to a request can arrive in either order: never step back to an older copy
+  applyOrder(o) {
+    const prev = get().orders[o.id]
+    if (prev && (prev.updated_at > o.updated_at || (prev.updated_at === o.updated_at && prev.messages.length > o.messages.length))) return
+    set({ orders: { ...get().orders, [o.id]: o } })
   },
   setSystem(s) { set({ system: s }) },
   setConnected(c) { set({ connected: c }) },
