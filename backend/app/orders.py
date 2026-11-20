@@ -125,7 +125,19 @@ def workspace_problem(cwd: Path, protected: list[Path]) -> str | None:
         if _inside(real, pr) or _inside(pr, real):
             return (f"The orders folder ({cwd}) overlaps {p}. Agents must work outside the Imperial Base code, "
                     "hooks and data; set IMPERIAL_ORDERS_CWD to a separate folder.")
+    found = [name for name in WORKSPACE_CONFIG_FILES if (real / name).exists()]
+    if found:
+        return (f"The orders folder contains Claude Code configuration ({', '.join(found)}). Order agents never "
+                "write these, so something else did: check and remove them before turning orders back on.")
     return None
+
+
+# Project configuration Claude Code would pick up from the working folder. Order agents run with
+# --setting-sources user so project and local settings there are ignored, may not edit these paths, and the
+# base refuses to start an agent while any of the settings files exist: a settings file can carry hooks,
+# which run commands outside every tool permission.
+WORKSPACE_CONFIG_FILES = (".claude/settings.json", ".claude/settings.local.json", ".mcp.json")
+WORKSPACE_CONFIG_DENY = (".claude/**", ".mcp.json", "CLAUDE.md", "CLAUDE.local.md")
 
 
 def _rule_path(p: Path) -> str:
@@ -137,7 +149,7 @@ def _rule_path(p: Path) -> str:
     return "//" + s.lstrip("/")
 
 
-def agent_settings(protected: list[Path]) -> dict[str, Any]:
+def agent_settings(protected: list[Path], workspace: Path | None = None) -> dict[str, Any]:
     """Settings handed to every order agent with --settings. Deny rules win over allow rules from any settings
     file, so these hold even if the Commander's own settings allow more. They back up the working-folder
     boundary; they are not the only line of defence."""
@@ -148,6 +160,9 @@ def agent_settings(protected: list[Path]) -> dict[str, Any]:
         deny.append(f"Edit({rule}{tail})")  # covers Write, MultiEdit and NotebookEdit too
         if p.suffix or p.name in ("spool", "hooks"):
             deny.append(f"Read({rule}{tail})")  # the event history and the hook copy are not for agents to read
+    if workspace is not None:
+        ws = _rule_path(workspace)
+        deny += [f"Edit({ws}/{name})" for name in WORKSPACE_CONFIG_DENY]  # no planting settings, hooks, MCP, memory
     return {"permissions": {"deny": deny}}
 
 
@@ -159,7 +174,8 @@ DISALLOWED_TOOLS = "Bash,PowerShell"
 def cli_args(exe: str, session_id: str, resume: bool, settings_file: Path | None) -> list[str]:
     args = [exe, "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits",
             "--disallowedTools", DISALLOWED_TOOLS,
-            "--strict-mcp-config"]  # no MCP servers: their tools are not bound by the working folder either
+            "--strict-mcp-config",  # no MCP servers: their tools are not bound by the working folder either
+            "--setting-sources", "user"]  # the Commander's settings (and hooks) only; never the workspace's own
     if settings_file is not None:
         args += ["--settings", str(settings_file)]
     args += ["--resume", session_id] if resume else ["--session-id", session_id]
@@ -180,7 +196,7 @@ class CliRun:
         if settings_file is not None:
             settings_file.parent.mkdir(parents=True, exist_ok=True)
             tmp = settings_file.with_suffix(".tmp")
-            tmp.write_text(json.dumps(agent_settings(protected or []), indent=2), encoding="utf-8")
+            tmp.write_text(json.dumps(agent_settings(protected or [], cwd), indent=2), encoding="utf-8")
             tmp.replace(settings_file)
         args = cli_args(exe, session_id, resume, settings_file)
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0  # type: ignore[attr-defined]

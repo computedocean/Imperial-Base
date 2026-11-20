@@ -112,7 +112,8 @@ it starts itself, from the **Orders** chat (`backend/app/orders.py`):
   workspace folder (`IMPERIAL_ORDERS_CWD`, default `~/.imperial-base/orders-workspace`); the chat cannot choose
   another, and the base refuses a folder that overlaps its checkout, the hook copy, the spool or the database;
 * permission mode `acceptEdits`, plus `--disallowedTools Bash,PowerShell` (on native Windows Claude Code cannot
-  confine what a shell writes), `--strict-mcp-config` (no MCP servers) and `--settings` with deny rules for the
+  confine what a shell writes), `--strict-mcp-config` (no MCP servers), `--setting-sources user` (the workspace's own `.claude` settings are never
+  loaded; the base also refuses to start while such files exist) and `--settings` with deny rules for the
   base's code, hook copy, spool, database and that settings file. Anything else your Claude Code settings do not
   already allow is refused by the CLI and reported in the chat;
 * up to four agents work at once; the base keeps 30 conversations in memory, never in its database (Claude Code

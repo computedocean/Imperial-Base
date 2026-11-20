@@ -516,3 +516,37 @@ def test_catch_all_through_a_junction_that_leaves_dist_is_refused(spa):
     _junction(spa.dist / "escape", outside)
     r = spa.get("/escape/leak.txt")
     assert "SECRET" not in r.text and "INDEX" in r.text
+
+
+# ---------------------------------------------------------------------- workspace configuration (follow-up)
+
+def test_agents_never_load_or_write_workspace_settings(tmp_path, fake_process):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    settings = tmp_path / "base" / "orders-settings.json"
+    orders_mod.CliRun("hi", "sid-4", False, ws, protected=[config.APP_ROOT], settings_file=settings)
+    args = fake_process[0].args
+    assert args[args.index("--setting-sources") + 1] == "user"  # project/local settings in the workspace ignored
+    deny = json.loads(settings.read_text(encoding="utf-8"))["permissions"]["deny"]
+    ws_rule = orders_mod._rule_path(ws)
+    for name in (".claude/**", ".mcp.json", "CLAUDE.md", "CLAUDE.local.md"):
+        assert f"Edit({ws_rule}/{name})" in deny
+
+
+@pytest.mark.parametrize("planted", [".claude/settings.json", ".claude/settings.local.json", ".mcp.json"])
+def test_a_workspace_with_planted_configuration_is_refused(tmp_path, monkeypatch, fake_process, planted):
+    monkeypatch.setattr(config, "ORDERS_ENABLED", True)
+    monkeypatch.setattr(config, "ORDERS_SETTINGS", tmp_path / "base" / "orders-settings.json")
+    ws = tmp_path / "ws"
+    target = ws / planted
+    target.parent.mkdir(parents=True)
+    target.write_text('{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "evil"}]}]}}', encoding="utf-8")
+    app = create_app(db_path=str(tmp_path / "t.db"), spool_path=str(tmp_path / "s.jsonl"), start_tailer=False,
+                     orders_cwd=str(ws))
+    with local_client(app) as c:
+        st = c.get("/api/orders").json()
+        assert st["enabled"] is False and "configuration" in st["reason"]
+        assert c.post("/api/orders", json={"text": "x"}).status_code == 503
+    with pytest.raises(orders_mod.OrderError):
+        orders_mod.CliRun("x", "sid-5", True, ws, protected=[config.APP_ROOT])
+    assert fake_process == []

@@ -3,16 +3,16 @@
 ## Automated suites
 
 ```bat
-backend\.venv\Scripts\python -m pytest -q backend\tests     :: 117 tests (+2 skipped)
+backend\.venv\Scripts\python -m pytest -q backend\tests     :: 121 tests (+2 skipped)
 cd frontend && npx vitest run                               :: 111 tests in 15 files
 cd frontend && npx tsc --noEmit -p .                         :: strict typecheck
 ```
 
 `test.cmd` wraps the three. Last full run: 2026-11-20, `test.cmd` printed ALL TESTS PASSED
-(117 backend passed and 2 skipped, 111 frontend, typecheck clean). The per-file lists below were written as each suite was added
+(121 backend passed and 2 skipped, 111 frontend, typecheck clean). The per-file lists below were written as each suite was added
 and may lag the current totals.
 
-### Backend — `backend/tests/test_security_high.py` (81 passing, 2 skipped)
+### Backend — `backend/tests/test_security_high.py` (85 passing, 2 skipped)
 
 Regression tests for the high-severity findings. No real agent is started (a scripted runner, or `subprocess.Popen`
 replaced by a recorder), and no network path is touched (filesystem calls on UNC paths are recorded and refused):
