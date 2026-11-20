@@ -32,7 +32,9 @@ Guarantees:
 
 ## Install
 
-`python scripts\install_hooks.py` — additive, idempotent, backs up `settings.json` first.
+`python scripts\install_hooks.py` — copies the hook to `~/.imperial-base/hooks/imperial-hook.js` and registers
+that copy (so nothing that can edit the checkout can change what every session runs); additive, idempotent, backs
+up `settings.json` first, moves older entries that pointed into the checkout, refuses unknown options.
 `--status`, `--uninstall` available. Hooks from other tools are preserved.
 
 Per-session alternative without touching global settings (used for this project's validation runs):
@@ -105,13 +107,17 @@ has the same name. Role/department by `agent_type`:
 Sessions started elsewhere are observed only; nothing is ever sent to them. The base can command only the agents
 it starts itself, from the **Orders** chat (`backend/app/orders.py`):
 
+* off unless `IMPERIAL_ORDERS=1`; while off, `GET /api/commands` lists nothing and no route can start a process;
 * each conversation runs the installed `claude` CLI headless (`claude -p`, resumed for follow-ups) in one fixed
-  folder, this project (`IMPERIAL_ORDERS_CWD`); the chat cannot choose another;
-* permission mode `acceptEdits`: file edits go through, anything else your Claude Code settings do not already
-  allow is refused by the CLI and reported in the chat;
-* up to four agents work at once; 30 conversations are kept, in memory only, never in the database;
-* the agent's own hook events make it appear in the world like any other agent;
-* `IMPERIAL_ORDERS=0` switches orders off, and `GET /api/commands` then lists nothing.
+  workspace folder (`IMPERIAL_ORDERS_CWD`, default `~/.imperial-base/orders-workspace`); the chat cannot choose
+  another, and the base refuses a folder that overlaps its checkout, the hook copy, the spool or the database;
+* permission mode `acceptEdits`, plus `--disallowedTools Bash,PowerShell` (on native Windows Claude Code cannot
+  confine what a shell writes), `--strict-mcp-config` (no MCP servers) and `--settings` with deny rules for the
+  base's code, hook copy, spool, database and that settings file. Anything else your Claude Code settings do not
+  already allow is refused by the CLI and reported in the chat;
+* up to four agents work at once; the base keeps 30 conversations in memory, never in its database (Claude Code
+  keeps its own session transcript as usual);
+* the agent's own hook events make it appear in the world like any other agent.
 
 ## Other agent systems
 

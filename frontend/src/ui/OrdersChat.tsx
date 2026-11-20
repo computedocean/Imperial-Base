@@ -1,4 +1,5 @@
-// The Commander's chat: give an order, and a Claude Code agent carries it out in the base's own folder.
+// The Commander's chat: give an order, and a Claude Code agent carries it out in its own workspace folder.
+// Orders are off unless the base was started with IMPERIAL_ORDERS=1; the backend then explains why.
 // Docked under the mission list. Each conversation is one agent; several can work at once.
 import { useEffect, useRef, useState } from 'react'
 import { orderLabel, pickOrder, sendToOrder, startOrder, stopOrder } from '../lib/orders'
@@ -58,7 +59,7 @@ export function OrdersChat() {
     <div className="orders" aria-label="Orders">
       <div className="orders-head">
         <span className="orders-title">ORDERS</span>
-        <span className="orders-folder" title="Agents started here work in this folder only. File edits go through; other actions need to be allowed in your Claude Code settings.">{info?.folder ?? '—'} folder</span>
+        <span className="orders-folder" title="Agents started here work in this workspace folder only, kept apart from the base's own code. File edits there go through; agents have no shell and no MCP servers, and other actions need to be allowed in your Claude Code settings.">{info?.folder ?? '—'} folder</span>
         <div className="chips orders-chips" role="toolbar" aria-label="Conversations">
           {list.map((o) => (
             <button key={o.id} className={`${current?.id === o.id ? 'on' : ''} st-${o.status}`} aria-pressed={current?.id === o.id} title={o.title} onClick={() => { setChosen(o.id); setFresh(false) }}>

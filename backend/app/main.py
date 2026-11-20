@@ -1,12 +1,13 @@
 """Imperial Base backend — FastAPI + WebSockets, local-first.
 
-Observes Claude Code through hooks, and (since the Commander asked for it) can start agents in this
-project folder from the base's chat: see orders.py for the rules that apply to those.
+Observes Claude Code through hooks, and (when IMPERIAL_ORDERS=1) can start agents in a separate workspace
+folder from the base's chat: see orders.py for the rules that apply to those.
 """
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import time
 from typing import Any
 
@@ -17,7 +18,10 @@ from fastapi.staticfiles import StaticFiles
 from . import config, system
 from .engine import Engine
 from .orders import OrderError, OrderManager, Runner
+from .pathsafe import safe_relative_under
 from .store import Store
+
+MAX_ORDER_BODY_BYTES = 64 * 1024  # an order is at most 8000 characters; this leaves room for JSON escaping
 
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
@@ -57,8 +61,36 @@ def require_local(request: Request) -> None:
     origin = request.headers.get("origin")
     if origin and not _own_origin(origin, host):
         raise HTTPException(403, "cross-site requests are refused")
-    if request.method == "POST" and not request.headers.get("content-type", "").lower().startswith("application/json"):
+    if request.method == "POST" and not _is_json_type(request.headers.get("content-type", "")):
         raise HTTPException(415, "send JSON")
+
+
+def _is_json_type(content_type: str) -> bool:
+    """Exactly application/json (parameters such as charset allowed); not text/plain, not application/jsonp."""
+    return content_type.split(";", 1)[0].strip().lower() == "application/json"
+
+
+async def read_json_limited(request: Request, limit: int) -> Any:
+    """The JSON body, refused with 413 once it passes ``limit`` bytes (checked on the declared length and again
+    while reading, so a missing or false Content-Length does not help), or 400 if it is not JSON."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > limit:
+                raise HTTPException(413, "request body too large")
+        except ValueError:
+            raise HTTPException(400, "bad Content-Length")
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(413, "request body too large")
+        chunks.append(chunk)
+    try:
+        return json.loads(b"".join(chunks) or b"null")
+    except ValueError:
+        raise HTTPException(400, "send JSON")
 
 
 def create_app(db_path: str | None = None, spool_path: str | None = None, start_tailer: bool = True,
@@ -69,7 +101,8 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
     engine = Engine(store, Path(spool_path) if spool_path else config.SPOOL_PATH)
     clients: set[WebSocket] = set()
     orders = OrderManager(Path(orders_cwd) if orders_cwd else config.ORDERS_CWD, engine.broadcast,
-                          runner=order_runner, enabled=config.ORDERS_ENABLED)
+                          runner=order_runner, enabled=config.ORDERS_ENABLED,
+                          protected=config.protected_paths(), settings_file=config.ORDERS_SETTINGS)
 
     async def system_loop() -> None:
         system.sample()  # prime psutil cpu_percent
@@ -147,10 +180,11 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
 
     @app.post("/api/ingest")
     async def ingest(request: Request) -> JSONResponse:
-        """Direct ingestion (loopback only). Same validation as the spool."""
-        if request.client and request.client.host not in LOCAL_HOSTS:
-            raise HTTPException(403, "loopback only")
-        body = await request.json()
+        """Direct ingestion. Same record validation as the spool, plus the same request checks as the order
+        endpoints: loopback caller and Host, the base's own Origin if one is sent, a JSON body, size-limited.
+        (A web page could otherwise post a text/plain body here without the browser asking first.)"""
+        require_local(request)
+        body = await read_json_limited(request, config.MAX_INGEST_BYTES)
         recs = body if isinstance(body, list) else [body]
         n = 0
         for r in recs[:500]:
@@ -167,10 +201,7 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
     # ---- orders: the Commander's chat (see orders.py)
     async def order_text(request: Request) -> Any:
         require_local(request)
-        try:
-            body = await request.json()
-        except ValueError:
-            raise HTTPException(400, "send JSON")
+        body = await read_json_limited(request, MAX_ORDER_BODY_BYTES)
         return body.get("text") if isinstance(body, dict) else None
 
     def refuse(e: OrderError) -> HTTPException:
@@ -246,12 +277,16 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
     if dist.is_dir() and (dist / "index.html").exists():
         app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 
+        index = dist / "index.html"
+
         @app.get("/{path:path}")
         def spa(path: str):
-            f = dist / path
-            if path and f.is_file() and dist in f.resolve().parents:
+            # The path is checked as text and resolved inside dist before any filesystem call on it; anything
+            # odd (backslashes, colons, .., a UNC or drive path) simply gets the app page, like any unknown route.
+            f = safe_relative_under(path, dist)
+            if f is not None and f.is_file():
                 return FileResponse(f)
-            return FileResponse(dist / "index.html")
+            return FileResponse(index)
 
     return app
 

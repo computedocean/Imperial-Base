@@ -6,14 +6,20 @@ Imperial Base is a local application. It is designed to run on your own computer
 
 - **Loopback only.** The server binds to `127.0.0.1`. Changing `IMPERIAL_HOST` to another address exposes the
   base to your network and is not supported.
-- **Cross-site protection.** The order endpoints require a loopback caller, a loopback `Host` header, an `Origin`
-  that is exactly the base's own page (or the Vite dev server) and a JSON body. The WebSocket refuses pages from
+- **Cross-site protection.** The order endpoints and `/api/ingest` require a loopback caller, a loopback `Host`
+  header, an `Origin` (when the browser sends one) that is exactly the base's own page or the Vite dev server, and a
+  JSON body of limited size. The WebSocket refuses pages from
   any other origin, and only loopback connections receive order conversations.
 - **Minimal capture.** The Claude Code hook never stores tool inputs or outputs, file contents, full commands or
   full prompts, and redacts secrets before writing. The backend accepts only an allow-list of fields.
-- **Orders are powerful.** An order starts a Claude Code agent with `acceptEdits` permissions in the project
-  folder. It can edit any file there, including the base's own code. Anything else is limited by your own Claude
-  Code permission settings. Set `IMPERIAL_ORDERS=0` if you do not want this capability.
+- **Untrusted paths.** Transcript paths from hook events are checked as text before any filesystem call and read
+  only from `~/.claude/projects` and `~/.cursor`; the web server checks URL paths the same way and serves only
+  files inside the built frontend. Network shares, device paths and traversal are refused.
+- **Orders are powerful and off by default.** With `IMPERIAL_ORDERS=1`, an order starts a Claude Code agent with
+  `acceptEdits` permissions in its own workspace folder, which may not overlap the base's code or data. The agent
+  gets no shell and no MCP servers, and deny rules block edits to the base's code, the hook copy and the data.
+  `acceptEdits` is not a sandbox: treat whatever the agent reads (web pages, files) as able to steer it. The hook
+  that every Claude Code session runs is a copy outside the checkout, so an agent cannot change it.
 
 ## Reporting a vulnerability
 

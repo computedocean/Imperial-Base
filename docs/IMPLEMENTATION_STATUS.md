@@ -205,6 +205,16 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
   in absolute PATH folders outside the server's and the agents' working folders.
   Not verified here: a long real order run end to end through the browser chat.
 
+## Security remediation, phase 2 (2026-11-20, branch `security/high-findings`)
+
+* ✅ **H1 Orders isolation:** off unless `IMPERIAL_ORDERS=1`; agents work in `~/.imperial-base/orders-workspace`
+  (a folder overlapping the checkout, hook copy, spool or database is refused); no shell, no MCP servers, deny
+  rules for the base's files; the installer registers a copy of the hook outside the checkout.
+* ✅ **H2 `/api/ingest`:** same request checks as the order endpoints, exact JSON content type, 2 MB body limit;
+  transcript paths checked as text and read only from `~/.claude/projects` and `~/.cursor`.
+* ✅ **H3 catch-all route:** URL paths checked as text and resolved inside `frontend/dist` before any filesystem call.
+* Tests: `backend/tests/test_security_high.py`.
+
 ## Known limitations
 
 * **Hook not installed globally yet.** Run `python scripts\install_hooks.py` once (see README). Until then

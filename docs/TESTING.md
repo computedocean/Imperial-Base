@@ -3,14 +3,36 @@
 ## Automated suites
 
 ```bat
-backend\.venv\Scripts\python -m pytest -q backend\tests     :: 36 tests
+backend\.venv\Scripts\python -m pytest -q backend\tests     :: 117 tests (+2 skipped)
 cd frontend && npx vitest run                               :: 111 tests in 15 files
 cd frontend && npx tsc --noEmit -p .                         :: strict typecheck
 ```
 
 `test.cmd` wraps the three. Last full run: 2026-11-20, `test.cmd` printed ALL TESTS PASSED
-(36 backend, 111 frontend, typecheck clean). The per-file lists below were written as each suite was added
+(117 backend passed and 2 skipped, 111 frontend, typecheck clean). The per-file lists below were written as each suite was added
 and may lag the current totals.
+
+### Backend — `backend/tests/test_security_high.py` (81 passing, 2 skipped)
+
+Regression tests for the high-severity findings. No real agent is started (a scripted runner, or `subprocess.Popen`
+replaced by a recorder), and no network path is touched (filesystem calls on UNC paths are recorded and refused):
+
+* **`/api/ingest`:** legitimate local JSON accepted (with and without the base's own Origin); malicious Host
+  headers, foreign / `null` / other-port / https Origins, and `text/plain`, form, multipart, `application/jsonp`
+  or missing content types refused; oversized bodies refused both by declared length and while streaming;
+  malformed JSON refused; UNC, `\\?\UNC` and `\\.\` transcript paths never reach the filesystem.
+* **Paths:** Windows path forms (UNC, long-path and device prefixes, drive-relative, root-relative, alternate data
+  streams, `..`, reserved names, NUL); transcripts outside the approved folders, or reached through a junction that
+  leaves them, are not read. The symlink variants are skipped without Developer Mode; the junction variants run.
+* **Catch-all route:** normal navigation, assets, root files and models still served; encoded UNC paths, encoded
+  traversal, drive paths, NUL, alternate streams, reserved names and junction escapes get the app page instead.
+* **Orders:** off unless `IMPERIAL_ORDERS=1` exactly; when off, no route or socket message starts anything and the
+  workspace is not created; folders overlapping the checkout, the hook copy or the database are refused; with a
+  mocked `Popen`, the agent runs in its workspace with `acceptEdits`, `--disallowedTools Bash,PowerShell`,
+  `--strict-mcp-config` and a `--settings` file of deny rules, the prompt only on stdin; an overlapping folder is
+  refused before any process starts; the full enabled path works end to end with the process mocked.
+* **Hook installer** (run against a temporary home, checked first): installs a copy outside the checkout, moves an
+  older entry that pointed into it, keeps other tools' hooks; unknown options and `--help` change nothing.
 
 ### Backend — `backend/tests/test_orders.py` (16 passing)
 

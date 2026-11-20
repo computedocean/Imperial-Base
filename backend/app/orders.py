@@ -1,13 +1,18 @@
 """Orders: the Commander gives work to agents from a chat in the base.
 
 Each order is one Claude Code conversation, run headless with the installed ``claude`` CLI in a single
-fixed folder (this project). The base's own hooks report what the agent does, so it appears in the
+fixed workspace folder. The base's own hooks report what the agent does, so it appears in the
 world like any other agent; this module only carries the conversation itself.
 
-Safety rules, all deliberate:
-  * one working folder, fixed in config - the chat cannot choose another;
-  * permission mode ``acceptEdits``: file edits go through, anything else that is not already allowed
-    in the Commander's Claude Code settings is refused by the CLI and reported back in the chat;
+Safety rules, all deliberate (acceptEdits is not a sandbox, so it is never the only one):
+  * off unless IMPERIAL_ORDERS=1;
+  * one working folder, fixed in config - the chat cannot choose another - and it may not overlap the base's
+    checkout, the hook copy, the spool or the database (checked when asked for status and again right before
+    a process starts);
+  * permission mode ``acceptEdits``: file edits inside that folder go through; Bash and PowerShell are removed
+    (on native Windows nothing confines what a shell writes), no MCP servers are loaded, and --settings adds deny
+    rules for the base's files; anything else that is not already allowed in the Commander's Claude Code
+    settings is refused by the CLI and reported back in the chat;
   * the conversation (order text, replies) lives in memory only - it is never written to the database,
     in keeping with the rest of the backend, which stores no prompts or commands.
 """
@@ -24,6 +29,8 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterator, Protocol
+
+from .pathsafe import plain_local_absolute
 
 MAX_TEXT = 8000  # characters accepted per order or follow-up
 MAX_MESSAGES = 400  # per conversation, oldest dropped first
@@ -105,15 +112,77 @@ def find_claude(work_dir: Path | None = None) -> str | None:
     return None
 
 
+def workspace_problem(cwd: Path, protected: list[Path]) -> str | None:
+    """Why ``cwd`` may not be the agents' working folder, or None. It must be a plain local folder that neither
+    sits inside nor contains anything protected (the base's checkout, the hook copy, the spool, the database):
+    acceptEdits approves every edit inside the working folder, so the folder itself is the boundary."""
+    s = str(cwd)
+    if not plain_local_absolute(s):
+        return "The orders folder must be a plain local folder (IMPERIAL_ORDERS_CWD)."
+    real = cwd.resolve()
+    for p in protected:
+        pr = p.resolve()
+        if _inside(real, pr) or _inside(pr, real):
+            return (f"The orders folder ({cwd}) overlaps {p}. Agents must work outside the Imperial Base code, "
+                    "hooks and data; set IMPERIAL_ORDERS_CWD to a separate folder.")
+    return None
+
+
+def _rule_path(p: Path) -> str:
+    """A Claude Code permission-rule path for an absolute local path: ``//`` + the path with forward slashes
+    (``C:\\Projects\\X`` -> ``//c/Projects/X``)."""
+    s = p.resolve().as_posix()
+    if len(s) > 1 and s[1] == ":":
+        s = s[0].lower() + s[2:]
+    return "//" + s.lstrip("/")
+
+
+def agent_settings(protected: list[Path]) -> dict[str, Any]:
+    """Settings handed to every order agent with --settings. Deny rules win over allow rules from any settings
+    file, so these hold even if the Commander's own settings allow more. They back up the working-folder
+    boundary; they are not the only line of defence."""
+    deny: list[str] = []
+    for p in protected:
+        rule = _rule_path(p)
+        tail = "/**" if not p.suffix else ""
+        deny.append(f"Edit({rule}{tail})")  # covers Write, MultiEdit and NotebookEdit too
+        if p.suffix or p.name in ("spool", "hooks"):
+            deny.append(f"Read({rule}{tail})")  # the event history and the hook copy are not for agents to read
+    return {"permissions": {"deny": deny}}
+
+
+# Tools removed from every order agent. On native Windows Claude Code cannot confine what a shell command
+# writes (permission rules cover only its own file tools), so the shells go entirely.
+DISALLOWED_TOOLS = "Bash,PowerShell"
+
+
+def cli_args(exe: str, session_id: str, resume: bool, settings_file: Path | None) -> list[str]:
+    args = [exe, "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits",
+            "--disallowedTools", DISALLOWED_TOOLS,
+            "--strict-mcp-config"]  # no MCP servers: their tools are not bound by the working folder either
+    if settings_file is not None:
+        args += ["--settings", str(settings_file)]
+    args += ["--resume", session_id] if resume else ["--session-id", session_id]
+    return args
+
+
 class CliRun:
     """``claude -p`` as a child process. The prompt goes in on stdin, so no shell quoting is involved."""
 
-    def __init__(self, prompt: str, session_id: str, resume: bool, cwd: Path):
+    def __init__(self, prompt: str, session_id: str, resume: bool, cwd: Path,
+                 protected: list[Path] | None = None, settings_file: Path | None = None):
         exe = find_claude(cwd)
         if not exe:
             raise OrderError("The claude command was not found on this machine.", 503)
-        args = [exe, "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"]
-        args += ["--resume", session_id] if resume else ["--session-id", session_id]
+        problem = workspace_problem(cwd, protected or [])
+        if problem is not None:  # checked again here, right before anything is started
+            raise OrderError(problem, 503)
+        if settings_file is not None:
+            settings_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp = settings_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(agent_settings(protected or []), indent=2), encoding="utf-8")
+            tmp.replace(settings_file)
+        args = cli_args(exe, session_id, resume, settings_file)
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0  # type: ignore[attr-defined]
         self.proc = subprocess.Popen(
             args, cwd=str(cwd), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -227,10 +296,15 @@ Broadcast = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class OrderManager:
-    def __init__(self, cwd: Path, broadcast: Broadcast, runner: Runner | None = None, enabled: bool = True):
+    def __init__(self, cwd: Path, broadcast: Broadcast, runner: Runner | None = None, enabled: bool = False,
+                 protected: list[Path] | None = None, settings_file: Path | None = None):
         self.cwd = cwd
         self.broadcast = broadcast
-        self.runner: Runner = runner or CliRun
+        self.protected = list(protected or [])
+        self._real = runner is None
+        self.settings_file = settings_file
+        self.runner: Runner = runner or (
+            lambda p, s, r, c: CliRun(p, s, r, c, protected=self.protected, settings_file=self.settings_file))
         self.enabled = enabled
         self.orders: dict[str, Order] = {}
         self._runs: dict[str, Run] = {}
@@ -238,8 +312,14 @@ class OrderManager:
 
     # -- queries
     def status(self) -> dict[str, Any]:
-        ready = self.enabled and (self.runner is not CliRun or find_claude(self.cwd) is not None)
-        reason = None if ready else ("Orders are switched off (IMPERIAL_ORDERS=0)." if not self.enabled else "The claude command was not found.")
+        reason = None
+        if not self.enabled:
+            reason = "Orders are switched off. Set IMPERIAL_ORDERS=1 before starting the base to turn them on."
+        elif (problem := workspace_problem(self.cwd, self.protected)) is not None:
+            reason = problem
+        elif self._real and find_claude(self.cwd) is None:
+            reason = "The claude command was not found."
+        ready = reason is None
         return {"enabled": ready, "reason": reason, "folder": self.cwd.name, "max_running": MAX_RUNNING,
                 "permission_mode": "acceptEdits"}
 
@@ -322,6 +402,7 @@ class OrderManager:
     async def _begin(self, order: Order, prompt: str, resume: bool) -> None:
         self._add(order, "commander", prompt)
         try:
+            await asyncio.to_thread(self.cwd.mkdir, parents=True, exist_ok=True)
             run = await asyncio.to_thread(self.runner, prompt, order.session_id, resume, self.cwd)
         except OrderError as e:
             order.status = "failed"

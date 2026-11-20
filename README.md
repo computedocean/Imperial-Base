@@ -44,7 +44,8 @@ Everything runs on your own computer. No cloud services, no paid APIs, no Docker
   turn summaries, all from Claude Code's supported hooks. Cursor sessions are reported too.
 - **"Needs you" alerts.** A banner, a pulsing top-bar pill and the browser tab title tell you when an agent is
   waiting for a permission or a turn has failed. One click takes you to it.
-- **Orders.** A chat that starts headless Claude Code agents in this project's folder, up to four at once.
+- **Orders (opt-in).** A chat that starts headless Claude Code agents in a workspace folder of their own, up to
+  four at once. Off unless you set `IMPERIAL_ORDERS=1`.
 - **A world to explore.** Eight division buildings, a command tower with a working holo table, an underground
   server bunker showing your machine's CPU and memory, and interiors you can walk into.
 - **Five camera modes.** Free orbit, tactical map, first person, third person and cinematic tours.
@@ -81,6 +82,9 @@ python scripts\install_hooks.py --status     :: check
 python scripts\install_hooks.py --uninstall  :: remove
 ```
 
+The installer copies the hook to `%USERPROFILE%\.imperial-base\hooks\` and registers that copy, so the code every
+Claude Code session runs lives outside this checkout. Re-run it after updating the base to refresh the copy; it
+also moves an older install that pointed into the checkout. Unknown options are refused without changing anything.
 The installer only adds its own entries and leaves your other hooks untouched. Running it twice changes nothing,
 and it writes a timestamped backup (`settings.json.bak-imperial-*`) before every change. New Claude Code sessions
 report to the base from then on; sessions already running pick it up when restarted.
@@ -121,14 +125,19 @@ per browser.
 
 ### Orders
 
-Type an order and a Claude Code agent carries it out in the Imperial Base folder, and nowhere else.
+Orders are **off by default**. Set `IMPERIAL_ORDERS=1` before starting the base to turn them on. Type an order and
+a Claude Code agent carries it out in its workspace folder (`%USERPROFILE%\.imperial-base\orders-workspace` by
+default, `IMPERIAL_ORDERS_CWD` to change it).
 
 - Each conversation is one agent. Up to four work at once.
 - You can reply once an agent has finished its turn, or stop it while it works.
-- File edits go through. Any other action your Claude Code settings do not already allow is refused and
-  reported in the chat.
-- Conversations are kept in memory only and are gone when the server stops.
-- Set `IMPERIAL_ORDERS=0` to switch orders off.
+- File edits inside the workspace go through. The workspace may not overlap the Imperial Base checkout, the hook
+  copy, the spool or the database; the base refuses to start agents if it does.
+- Order agents get no shell (Bash and PowerShell are removed) and no MCP servers, and deny rules stop them
+  editing the base's code, hooks and data. Anything else your Claude Code settings do not already allow is
+  refused and reported in the chat.
+- The base keeps its copy of each conversation in memory only. Claude Code keeps its usual session transcript,
+  and with the hook installed the agent's events are recorded like any other session's.
 
 ## What is real and what is simulated
 
@@ -161,8 +170,10 @@ All settings are optional environment variables, read when the server starts.
 | `IMPERIAL_STALE_AFTER` | `900` | Seconds without events before an agent's activity reads *unknown* |
 | `IMPERIAL_MAX_EVENTS` | `50000` | Events kept in the database |
 | `IMPERIAL_READ_USAGE` | `1` | Read token counts and model id from transcripts. `0` turns it off |
-| `IMPERIAL_ORDERS` | `1` | Enable the Orders chat. `0` turns it off |
-| `IMPERIAL_ORDERS_CWD` | this project | The only folder order agents work in |
+| `IMPERIAL_ORDERS` | `0` | `1` enables the Orders chat. Any other value leaves it off |
+| `IMPERIAL_ORDERS_CWD` | `<base dir>\orders-workspace` | The only folder order agents work in. Must not overlap the checkout or the base's data |
+| `IMPERIAL_TRANSCRIPT_ROOTS` | `~\.claude\projects;~\.cursor` | The only folders transcripts are read from (token counts and model id) |
+| `IMPERIAL_MAX_INGEST_BYTES` | `2097152` | Largest request body `/api/ingest` accepts |
 
 ## Development
 
@@ -196,14 +207,18 @@ docs/             design and reference documentation
 
 ## Privacy and security
 
-- **Loopback only.** The server binds to `127.0.0.1`. WebSocket and order requests from other sites are
-  refused by checking the caller address, Host and Origin.
+- **Loopback only.** The server binds to `127.0.0.1`. Order and ingest requests must come from this machine with a
+  loopback Host, the base's own Origin (if any) and a JSON body of limited size. The WebSocket refuses pages from
+  other origins.
+- **No untrusted paths.** Paths from hook events and URLs are checked as text before any filesystem call: network
+  shares, device paths and traversal are refused, transcripts are read only from Claude Code's and Cursor's own
+  folders, and the web server serves only files inside the built frontend.
 - **The hook keeps little.** It never stores tool inputs or outputs, file contents, full commands or full
   prompts. File tools are reduced to the file name, prompts to a short redacted excerpt, and secrets such as API
   keys, tokens and e-mail addresses are redacted before anything is written.
 - **Defence in depth.** The backend accepts only an allow-list of fields and truncates strings again.
-- **One command channel.** Sessions started elsewhere are observed only. Orders reach only the agents the base
-  starts itself, in its own folder.
+- **One command channel, opt-in.** Sessions started elsewhere are observed only. Orders are off by default and,
+  when enabled, reach only the agents the base starts itself, in a workspace separate from the base's code.
 
 Details: [Agent integration](docs/AGENT_INTEGRATION.md) and [Security policy](SECURITY.md).
 

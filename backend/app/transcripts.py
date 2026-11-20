@@ -8,14 +8,22 @@ import json
 from pathlib import Path
 from typing import Any
 
+from . import config
+from .pathsafe import safe_file_under
+
 FIELDS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 MAX_BYTES = 64 * 1024 * 1024
 
 
-def usage_from_transcript(path: str | None) -> dict[str, Any] | None:
+def usage_from_transcript(path: str | None, roots: list[Path] | None = None) -> dict[str, Any] | None:
+    """Usage totals from a transcript. ``path`` comes from hook events, so it is checked as text first: only a
+    plain local file inside an approved folder (``config.TRANSCRIPT_ROOTS``) is ever opened. Network shares,
+    device paths and anything outside those folders are refused before any filesystem call."""
     if not path:
         return None
-    p = Path(path)
+    p = safe_file_under(path, roots if roots is not None else config.TRANSCRIPT_ROOTS)
+    if p is None:
+        return None
     try:
         if not p.is_file() or p.stat().st_size > MAX_BYTES:
             return None

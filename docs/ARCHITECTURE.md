@@ -42,10 +42,14 @@
 * **Defence in depth on privacy.** The hook reduces payloads (no tool inputs/outputs, basenames only, redacted
   short excerpts); the backend accepts only an allow-list of keys and truncates strings.
 * **Observation first, one command channel.** Nothing can be sent to a session started elsewhere. The Commander
-  authorised one channel: orders (`backend/app/orders.py`), which start a headless `claude -p` run in the base's
-  own folder with `acceptEdits` permissions. The order endpoints accept only this machine talking to itself
-  (caller address, Host and Origin are checked, and the body must be declared as JSON), and conversations are
-  held in memory, never written to the database.
+  authorised one channel, off unless `IMPERIAL_ORDERS=1`: orders (`backend/app/orders.py`), which start a headless
+  `claude -p` run in a workspace folder separate from the base's code, with `acceptEdits`, no shell, no MCP servers
+  and deny rules for the base's files. The order endpoints accept only this machine talking to itself (caller
+  address, Host and Origin are checked, and the body must be size-limited JSON), and conversations are held in
+  memory, never written to the database.
+* **Untrusted paths are checked as text first** (`backend/app/pathsafe.py`): transcript paths from events and URL
+  paths in the catch-all route are refused if they are network, device or traversal paths, or fall outside the
+  approved folders, before any filesystem call.
 * **Interiors live inside their buildings** at real world coordinates. Agents walk from the department door to
   a station; the shell is hidden while the camera is inside. The command chamber is the tower's bridge with
   clear glass onto the live base; the bunker is underground. Only the active interior is rendered.

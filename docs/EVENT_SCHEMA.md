@@ -77,7 +77,7 @@ cache_creation_input_tokens, cache_read_input_tokens, total_tokens, messages}`, 
 | GET | /api/tasks, /api/sessions | |
 | GET | /api/schema | observed hook payload keys per event |
 | GET | /api/system | CPU / memory / GPU availability / Claude process count / Docker containers |
-| POST | /api/ingest | loopback-only direct ingestion (same validation) — used by tests |
+| POST | /api/ingest | direct ingestion (same record validation); one record or a list of up to 500 → `{"accepted": n}`. Same request checks as the order endpoints (loopback caller and Host, own Origin if sent, `application/json`), body ≤ `IMPERIAL_MAX_INGEST_BYTES` (413 above). Used by tests |
 | GET | /api/commands | `{"enabled", "available": ["orders"], "note"}` — orders are the only command |
 | GET | /api/orders | orders status (`enabled`, `reason`, `folder`, `max_running`) + every conversation |
 | POST | /api/orders | `{"text"}` — start a new conversation (one agent) |

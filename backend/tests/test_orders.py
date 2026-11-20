@@ -81,7 +81,9 @@ class Script:
 
 
 @pytest.fixture()
-def rig(tmp_path):
+def rig(tmp_path, monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, "ORDERS_ENABLED", True)  # orders are opt-in (IMPERIAL_ORDERS=1)
     script = Script()
     app = create_app(db_path=str(tmp_path / "t.db"), spool_path=str(tmp_path / "spool.jsonl"), start_tailer=False,
                      order_runner=script, orders_cwd=str(tmp_path))
