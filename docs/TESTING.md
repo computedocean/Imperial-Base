@@ -3,16 +3,16 @@
 ## Automated suites
 
 ```bat
-backend\.venv\Scripts\python -m pytest -q backend\tests     :: 33 tests
+backend\.venv\Scripts\python -m pytest -q backend\tests     :: 36 tests
 cd frontend && npx vitest run                               :: 111 tests in 15 files
 cd frontend && npx tsc --noEmit -p .                         :: strict typecheck
 ```
 
 `test.cmd` wraps the three. Last full run: 2026-11-20, `test.cmd` printed ALL TESTS PASSED
-(33 backend, 111 frontend, typecheck clean). The per-file lists below were written as each suite was added
+(36 backend, 111 frontend, typecheck clean). The per-file lists below were written as each suite was added
 and may lag the current totals.
 
-### Backend — `backend/tests/test_orders.py` (13 passing)
+### Backend — `backend/tests/test_orders.py` (16 passing)
 
 Runs the orders manager against a fake `claude` CLI, so no real agent starts:
 
@@ -20,7 +20,11 @@ Runs the orders manager against a fake `claude` CLI, so no real agent starts:
 * a busy agent refuses a second message and can be stopped; refused tool calls and failed runs are reported in
   the chat; a run that dies without a result is marked failed;
 * live updates reach the WebSocket; input limits (8000 characters); at most four agents work at once;
-* requests and sockets from other sites are refused, and conversations are never written to the database;
+* requests and sockets from other sites are refused, including pages served by other programs on this machine
+  (same host name, different port), and conversations are never written to the database;
+* the test host names `testserver` / `testclient` are not trusted; the suites connect as `127.0.0.1` like a real
+  browser;
+* a `claude` file planted in the working folder or the current folder is never run;
 * `IMPERIAL_ORDERS=0` switches orders off; tool descriptions keep detail low; unknown records are ignored.
 
 `frontend/src/lib/orders.test.ts` (4) covers the chat's client-side helpers.

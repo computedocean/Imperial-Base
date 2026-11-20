@@ -1,6 +1,9 @@
-# Skill & capability inventory
+# Build notes: initial capability assessment
 
-Assessment performed at project start (2026-11-04) on the development machine.
+> **Historical record.** This is the assessment made at the start of the project (2026-11-04). Several
+> limits listed here were lifted later: Blender was installed and now builds the 3D models (`tools/blender/`),
+> and photo-scanned CC0 assets are used for desert rocks. See [Implementation status](IMPLEMENTATION_STATUS.md)
+> for the current state.
 
 ## Environment
 
@@ -13,7 +16,7 @@ Assessment performed at project start (2026-11-04) on the development machine.
 | Blender | **not installed** → all assets are procedural three.js geometry |
 | GPU | Intel(R) Graphics (integrated); no `nvidia-smi` → GPU utilisation reported as unavailable |
 | Docker | CLI present (only read via `docker ps` for the bunker display; never started) |
-| Existing hooks | Agent HQ (`~/.agent-hq`), Orca agent hooks, OpenLIT plugin — left untouched |
+| Existing hooks | Hooks from other tools — left untouched |
 
 ## Skills available (relevant subset of ~150 installed)
 
@@ -44,8 +47,7 @@ MCP: Claude Docs, Google Workspace, Microsoft Learn, Remote Desktop Commander an
 Considered and not used: `blender-web-pipeline` (Blender absent), `polyhaven`/`substance-3d-texturing` (would
 need downloaded third-party assets; procedural textures keep everything original and offline),
 `babylonjs`/`playcanvas` (R3F preferred by the brief), OpenTelemetry (hooks give richer per-agent lifecycle
-without running a collector; OpenLIT stays separate). Ruflo MCP tools mentioned in the global CLAUDE.md were not
-present in this session's tool list.
+without running a collector).
 
 ## Unavailable / limited
 

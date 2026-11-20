@@ -199,7 +199,10 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 * ✅ **Orders chat** (Missions tab, `backend/app/orders.py`, `ui/OrdersChat.tsx`): the Commander types an order and
   a headless Claude Code agent carries it out in this project's folder only, with `acceptEdits` permissions. Up to
   four at once; reply after a turn, or stop a running agent. Local-only endpoints, conversations in memory only.
-  Tests: `backend/tests/test_orders.py` (13), `frontend/src/lib/orders.test.ts` (4).
+  Tests: `backend/tests/test_orders.py` (16), `frontend/src/lib/orders.test.ts` (4).
+* ✅ **Hardening (2026-11-20)**: the Origin check now compares scheme, host and port, so pages served by other
+  programs on this machine are refused; test host names are no longer trusted; the `claude` CLI is looked up only
+  in absolute PATH folders outside the server's and the agents' working folders.
   Not verified here: a long real order run end to end through the browser chat.
 
 ## Known limitations

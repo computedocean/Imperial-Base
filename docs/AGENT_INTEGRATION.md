@@ -8,8 +8,8 @@ mechanism. No paid APIs, no extra subscriptions, no OpenTelemetry collector requ
 Hooks are Claude Code's supported, local, documented way to observe a session: a command receives a JSON
 payload on stdin for each lifecycle event. They cover everything Imperial Base needs — sessions, prompts,
 every tool call (including tool calls made *inside* subagents, which carry `agent_id`/`agent_type`),
-subagent start/stop, turn completion, failures and notifications. OpenLIT remains your observability platform;
-Imperial Base neither replaces nor reads it.
+subagent start/stop, turn completion, failures and notifications. Imperial Base neither replaces nor reads any
+observability platform you already run.
 
 ## Capture: `hooks/imperial-hook.js`
 
@@ -33,7 +33,7 @@ Guarantees:
 ## Install
 
 `python scripts\install_hooks.py` — additive, idempotent, backs up `settings.json` first.
-`--status`, `--uninstall` available. Existing hooks (Agent HQ, Orca, OpenLIT plugin…) are preserved.
+`--status`, `--uninstall` available. Hooks from other tools are preserved.
 
 Per-session alternative without touching global settings (used for this project's validation runs):
 
@@ -113,7 +113,7 @@ it starts itself, from the **Orders** chat (`backend/app/orders.py`):
 * the agent's own hook events make it appear in the world like any other agent;
 * `IMPERIAL_ORDERS=0` switches orders off, and `GET /api/commands` then lists nothing.
 
-## Grok / other systems
+## Other agent systems
 
-Grok, Hermes, TRON, CAOS, DeepSeek are not integrated. A future read-only adapter could append records in the
+Only Claude Code (and Cursor, through the same hook) is integrated. A read-only adapter for another system could append records in the
 same sanitised schema to the spool; the engine would ingest them unchanged.

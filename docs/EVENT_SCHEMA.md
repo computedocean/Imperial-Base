@@ -85,5 +85,6 @@ cache_creation_input_tokens, cache_read_input_tokens, total_tokens, messages}`, 
 | POST | /api/orders/{id}/stop | stop the agent while it works |
 | WS | /ws | server → client: `snapshot`, `event {event, agents[], tasks[]}`, `system`, `orders`, `order`; client → server: `ping` |
 
-The order endpoints accept only this machine talking to itself: caller address, Host and Origin are checked and
-the body must be JSON. Text is limited to 8000 characters. Conversations live in memory and are never stored.
+The order endpoints accept only this machine talking to itself: the caller address and Host must be loopback,
+the Origin (when sent) must be exactly the page's own scheme, host and port or a Vite dev server
+(`http://127.0.0.1:5273` / `5274`), and the body must be JSON. The WebSocket applies the same Origin rule. Text is limited to 8000 characters. Conversations live in memory and are never stored.
