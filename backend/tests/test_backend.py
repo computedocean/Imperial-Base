@@ -4,7 +4,19 @@ import sys
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient as _TestClient
+
+
+class _Local(_TestClient):
+    """This machine talking to itself, like the browser on the base. websocket_connect ignores base_url and
+    would send Host: testserver, so the real local host is set there too."""
+
+    def websocket_connect(self, url, *args, headers=None, **kwargs):
+        return super().websocket_connect(url, *args, headers={"host": "127.0.0.1:8742", **(headers or {})}, **kwargs)
+
+
+def TestClient(app):  # noqa: N802
+    return _Local(app, base_url="http://127.0.0.1:8742", client=("127.0.0.1", 50000))
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))

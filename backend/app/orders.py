@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 import subprocess
 import sys
 import threading
@@ -75,15 +74,42 @@ Runner = Callable[[str, str, bool, Path], Run]
 
 # ---------------------------------------------------------------------------- the real runner
 
-def find_claude() -> str | None:
-    return shutil.which("claude")
+def _inside(path: Path, folder: Path) -> bool:
+    return path == folder or folder in path.parents
+
+
+def find_claude(work_dir: Path | None = None) -> str | None:
+    """Absolute path of the ``claude`` CLI, or None.
+
+    Only absolute folders on PATH are searched. The server's current folder and the order agents' working
+    folder are never searched, and a match inside either is refused: an order agent may create files there,
+    and Windows would otherwise run a planted ``claude.cmd`` from the current folder before the real one.
+    """
+    blocked = [Path.cwd().resolve()] + ([Path(work_dir).resolve()] if work_dir else [])
+    if sys.platform == "win32":
+        exts = [e for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").lower().split(";") if e]
+    else:
+        exts = [""]
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry or not os.path.isabs(entry):
+            continue
+        folder = Path(entry).resolve()
+        if any(_inside(folder, b) for b in blocked):
+            continue
+        for ext in exts:
+            candidate = folder / f"claude{ext}"
+            if candidate.is_file() and (sys.platform == "win32" or os.access(candidate, os.X_OK)):
+                real = candidate.resolve()
+                if not any(_inside(real, b) for b in blocked):
+                    return str(real)
+    return None
 
 
 class CliRun:
     """``claude -p`` as a child process. The prompt goes in on stdin, so no shell quoting is involved."""
 
     def __init__(self, prompt: str, session_id: str, resume: bool, cwd: Path):
-        exe = find_claude()
+        exe = find_claude(cwd)
         if not exe:
             raise OrderError("The claude command was not found on this machine.", 503)
         args = [exe, "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"]
@@ -212,7 +238,7 @@ class OrderManager:
 
     # -- queries
     def status(self) -> dict[str, Any]:
-        ready = self.enabled and (self.runner is not CliRun or find_claude() is not None)
+        ready = self.enabled and (self.runner is not CliRun or find_claude(self.cwd) is not None)
         reason = None if ready else ("Orders are switched off (IMPERIAL_ORDERS=0)." if not self.enabled else "The claude command was not found.")
         return {"enabled": ready, "reason": reason, "folder": self.cwd.name, "max_running": MAX_RUNNING,
                 "permission_mode": "acceptEdits"}

@@ -1,11 +1,24 @@
 """Orders (the Commander's chat). A scripted runner stands in for the claude CLI: no agent is started."""
+import os
 import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient as _TestClient
+
+
+class _Local(_TestClient):
+    """This machine talking to itself, like the browser on the base. websocket_connect ignores base_url and
+    would send Host: testserver, so the real local host is set there too."""
+
+    def websocket_connect(self, url, *args, headers=None, **kwargs):
+        return super().websocket_connect(url, *args, headers={"host": "127.0.0.1:8742", **(headers or {})}, **kwargs)
+
+
+def TestClient(app):  # noqa: N802
+    return _Local(app, base_url="http://127.0.0.1:8742", client=("127.0.0.1", 50000))
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -228,7 +241,7 @@ def test_the_live_socket_refuses_other_sites_and_keeps_conversations_local(rig):
         assert msg["type"] == "event"  # no "orders" list before it, and no "order" update either
         assert "private order" not in str(msg)
     # the base's own page still gets them
-    with client.websocket_connect("/ws", headers={"origin": "http://testserver"}) as ws:
+    with client.websocket_connect("/ws", headers={"origin": "http://127.0.0.1:8742"}) as ws:
         ws.receive_json(); ws.receive_json()
         assert ws.receive_json()["type"] == "orders"
 
@@ -260,3 +273,48 @@ def test_unknown_records_are_ignored():
     assert messages_from({"type": "system", "subtype": "init"}) == ([], None)
     assert messages_from({"type": "user", "message": {"content": [{"type": "tool_result", "content": "private output"}]}}) == ([], None)
     assert messages_from({"type": "assistant", "message": {"content": "not a list"}}) == ([], None)
+
+
+def test_pages_from_other_local_ports_are_refused(rig):
+    """Another program serving a page on this machine (same host name, different port) is not the base."""
+    from starlette.websockets import WebSocketDisconnect
+
+    client, script = rig
+    for origin in ("http://127.0.0.1:3000", "http://localhost:8080", "https://127.0.0.1:8742"):
+        r = client.post("/api/orders", json={"text": "x"}, headers={"origin": origin})
+        assert r.status_code == 403, origin
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/ws", headers={"origin": origin}):
+                pass
+    assert script.calls == []
+
+
+def test_test_host_names_are_not_trusted(tmp_path):
+    from fastapi.testclient import TestClient as Plain
+
+    app = create_app(db_path=str(tmp_path / "t.db"), spool_path=str(tmp_path / "s.jsonl"), start_tailer=False,
+                     order_runner=Script(), orders_cwd=str(tmp_path))
+    with Plain(app) as c:  # Host "testserver", caller "testclient"
+        assert c.get("/api/orders").status_code == 403
+        assert c.post("/api/ingest", json={"v": 1, "event": "SessionStart", "session_id": "S1"}).status_code == 403
+
+
+def test_a_claude_planted_in_the_work_folder_is_never_run(tmp_path, monkeypatch):
+    from app import orders as orders_mod
+
+    work = tmp_path / "work"
+    bin_dir = tmp_path / "bin"
+    work.mkdir()
+    bin_dir.mkdir()
+    name = "claude.cmd" if sys.platform == "win32" else "claude"
+    planted = work / name
+    real = bin_dir / name
+    for p in (planted, real):
+        p.write_text("@echo off\n" if sys.platform == "win32" else "#!/bin/sh\n")
+        p.chmod(0o755)
+    monkeypatch.chdir(work)
+    # the work folder is on PATH first, and also given as a relative entry: neither may be used
+    monkeypatch.setenv("PATH", os.pathsep.join([str(work), ".", str(bin_dir)]))
+    assert orders_mod.find_claude(work) == str(real.resolve())
+    monkeypatch.setenv("PATH", os.pathsep.join([str(work), "."]))
+    assert orders_mod.find_claude(work) is None

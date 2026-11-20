@@ -20,7 +20,9 @@ from .orders import OrderError, OrderManager, Runner
 from .store import Store
 
 
-LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]", "testclient", "testserver"}
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+# The Vite dev servers (dev.cmd and the QA preview) serve the base's pages from these ports.
+DEV_ORIGINS = {f"http://{h}:{p}" for h in ("127.0.0.1", "localhost", "[::1]") for p in (5273, 5274)}
 
 
 def _hostname(value: str) -> str:
@@ -29,6 +31,14 @@ def _hostname(value: str) -> str:
     if v.startswith("["):
         return v.split("]", 1)[0] + "]"
     return v.rsplit(":", 1)[0] if ":" in v else v
+
+
+def _own_origin(origin: str, host_header: str) -> bool:
+    """True when a page's Origin is the base itself: the exact scheme, host and port it was served from
+    (the same as the Host it connects to), or one of the Vite dev servers. Host names alone are not enough:
+    any other program serving a page on 127.0.0.1 at a different port would otherwise pass."""
+    o = origin.strip().lower().rstrip("/")
+    return o == f"http://{host_header.strip().lower()}" or o in DEV_ORIGINS
 
 
 def require_local(request: Request) -> None:
@@ -41,10 +51,11 @@ def require_local(request: Request) -> None:
     """
     if request.client and request.client.host not in LOCAL_HOSTS:
         raise HTTPException(403, "loopback only")
-    if _hostname(request.headers.get("host", "")) not in LOCAL_HOSTS:
+    host = request.headers.get("host", "")
+    if _hostname(host) not in LOCAL_HOSTS:
         raise HTTPException(403, "loopback only")
     origin = request.headers.get("origin")
-    if origin and _hostname(origin) not in LOCAL_HOSTS:
+    if origin and not _own_origin(origin, host):
         raise HTTPException(403, "cross-site requests are refused")
     if request.method == "POST" and not request.headers.get("content-type", "").lower().startswith("application/json"):
         raise HTTPException(415, "send JSON")
@@ -137,7 +148,7 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
     @app.post("/api/ingest")
     async def ingest(request: Request) -> JSONResponse:
         """Direct ingestion (loopback only). Same validation as the spool."""
-        if request.client and request.client.host not in ("127.0.0.1", "::1", "localhost", "testclient"):
+        if request.client and request.client.host not in LOCAL_HOSTS:
             raise HTTPException(403, "loopback only")
         body = await request.json()
         recs = body if isinstance(body, list) else [body]
@@ -197,10 +208,12 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
         # Browsers let any web page open a websocket to any address, so the page's Origin is checked here.
-        # A page from another site (Origin differs from the Host it connected to) is refused outright.
-        host = _hostname(sock.headers.get("host", ""))
+        # A page from anywhere else (its Origin is not exactly the scheme, host and port it connected to,
+        # nor a Vite dev server) is refused outright.
+        host_header = sock.headers.get("host", "")
+        host = _hostname(host_header)
         origin = sock.headers.get("origin")
-        if origin and _hostname(origin) != host:
+        if origin and not _own_origin(origin, host_header):
             await sock.close(code=1008)
             return
         # Conversations with agents go only to this machine talking to itself (same rule as the order endpoints).
