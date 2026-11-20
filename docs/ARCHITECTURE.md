@@ -40,13 +40,21 @@
 * **Events are the source of truth.** Agent and task state is a pure fold over stored events
   (`Registry.apply`). On restart the backend replays SQLite, so the UI state is reproducible and testable.
 * **Defence in depth on privacy.** The hook reduces payloads (no tool inputs/outputs, basenames only, redacted
-  short excerpts); the backend accepts only an allow-list of keys and truncates strings.
+  short excerpts); the backend accepts only an allow-list of keys, redacts them again (`backend/app/redact.py`,
+  the same patterns as the hook) and truncates strings. Redaction is pattern matching and cannot catch every secret.
+* **One check at the server edge.** `LocalBoundary` (`backend/app/main.py`) runs before every route and WebSocket
+  handshake: exact loopback `Host` on the server's own port, loopback caller, `Origin` (if sent) equal to that
+  `Host`, no cross-site fetches of `/api` or `/ws`. A request naming a Vite dev port is accepted only with the
+  token that the running Vite server wrote at start-up. Forwarding headers are never read.
 * **Observation first, one command channel.** Nothing can be sent to a session started elsewhere. The Commander
   authorised one channel, off unless `IMPERIAL_ORDERS=1`: orders (`backend/app/orders.py`), which start a headless
-  `claude -p` run in a workspace folder separate from the base's code, with `acceptEdits`, no shell, no MCP servers
-  and deny rules for the base's files. The order endpoints accept only this machine talking to itself (caller
-  address, Host and Origin are checked, and the body must be size-limited JSON), and conversations are held in
-  memory, never written to the database.
+  `claude -p` run in a workspace folder separate from the base's code. The run uses `acceptEdits` and a tool
+  allowlist (`--tools Edit,Write`; Read, Glob and Grep only with `IMPERIAL_ORDERS_READ=1`; never a shell, web or
+  MCP). A `PreToolUse` guard (`backend/app/orders_guard.py`) refuses any path outside the workspace. Deny rules
+  cover the base's files, the Claude Code configuration and common credential files. The base refuses to start
+  an agent when the workspace holds project configuration, or when the Commander's Claude Code settings could
+  widen access. Each launch gets its own settings file. Conversations are held in memory, not written to the
+  database.
 * **Untrusted paths are checked as text first** (`backend/app/pathsafe.py`): transcript paths from events and URL
   paths in the catch-all route are refused if they are network, device or traversal paths, or fall outside the
   approved folders, before any filesystem call.
@@ -63,7 +71,7 @@
 | Process | Port | Notes |
 |---|---|---|
 | `uvicorn --factory app.main:create_app` | 8742 | serves API, WebSocket and the built frontend |
-| `vite` (dev only) | 5273 | proxies `/api` and `/ws` to 8742 |
+| `vite` (dev only) | 5273 (5274 for QA) | proxies `/api` and `/ws` to 8742, adding its per-launch dev-proxy token; `strictPort` |
 
 Configuration is via environment variables (see `backend/app/config.py`): `IMPERIAL_PORT`, `IMPERIAL_HOST`,
 `IMPERIAL_BASE_DIR`, `IMPERIAL_SPOOL`, `IMPERIAL_DB`, `IMPERIAL_STALE_AFTER`, `IMPERIAL_READ_USAGE=0` (disable

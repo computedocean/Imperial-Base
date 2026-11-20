@@ -59,7 +59,7 @@ export function OrdersChat() {
     <div className="orders" aria-label="Orders">
       <div className="orders-head">
         <span className="orders-title">ORDERS</span>
-        <span className="orders-folder" title="Agents started here work in this workspace folder only, kept apart from the base's own code. File edits there go through; agents have no shell and no MCP servers, and other actions need to be allowed in your Claude Code settings.">{info?.folder ?? '—'} folder</span>
+        <span className="orders-folder" title="Agents started here work in this workspace folder, kept apart from the base's own code. By default they can only create and edit files in it; reading and searching files is off unless the base was started with IMPERIAL_ORDERS_READ=1. No shell, no web access, no MCP servers. A guard refuses any file path outside this folder, and orders stay off if your Claude Code settings could widen that.">{info?.folder ?? '—'} folder</span>
         <div className="chips orders-chips" role="toolbar" aria-label="Conversations">
           {list.map((o) => (
             <button key={o.id} className={`${current?.id === o.id ? 'on' : ''} st-${o.status}`} aria-pressed={current?.id === o.id} title={o.title} onClick={() => { setChosen(o.id); setFresh(false) }}>

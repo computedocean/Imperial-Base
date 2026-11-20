@@ -77,14 +77,19 @@ cache_creation_input_tokens, cache_read_input_tokens, total_tokens, messages}`, 
 | GET | /api/tasks, /api/sessions | |
 | GET | /api/schema | observed hook payload keys per event |
 | GET | /api/system | CPU / memory / GPU availability / Claude process count / Docker containers |
-| POST | /api/ingest | direct ingestion (same record validation); one record or a list of up to 500 → `{"accepted": n}`. Same request checks as the order endpoints (loopback caller and Host, own Origin if sent, `application/json`), body ≤ `IMPERIAL_MAX_INGEST_BYTES` (413 above). Used by tests |
+| POST | /api/ingest | direct ingestion (same record validation and redaction); one record or a list of up to 500 → `{"accepted": n}`. `application/json` only, body ≤ `IMPERIAL_MAX_INGEST_BYTES` (413 above). Used by tests |
 | GET | /api/commands | `{"enabled", "available": ["orders"], "note"}` — orders are the only command |
-| GET | /api/orders | orders status (`enabled`, `reason`, `folder`, `max_running`) + every conversation |
+| GET | /api/orders | orders status (`enabled`, `reason`, `folder`, `max_running`, `permission_mode`, `tools`, `read_access`) + every conversation |
 | POST | /api/orders | `{"text"}` — start a new conversation (one agent) |
 | POST | /api/orders/{id}/messages | `{"text"}` — reply once the agent has finished its turn |
 | POST | /api/orders/{id}/stop | stop the agent while it works |
 | WS | /ws | server → client: `snapshot`, `event {event, agents[], tasks[]}`, `system`, `orders`, `order`; client → server: `ping` |
 
-The order endpoints accept only this machine talking to itself: the caller address and Host must be loopback,
-the Origin (when sent) must be exactly the page's own scheme, host and port or a Vite dev server
-(`http://127.0.0.1:5273` / `5274`), and the body must be JSON. The WebSocket applies the same Origin rule. Text is limited to 8000 characters. Conversations live in memory and are never stored.
+Every endpoint above, the WebSocket and the static files accept only this machine talking to itself. The caller
+address must be loopback. The `Host` must be exactly `127.0.0.1`, `localhost` or `[::1]` with the port the server
+listens on. The `Origin` (when sent) must be exactly `http://` plus that `Host`. On `/api` and `/ws`, a browser
+that marks the request cross-site or same-site is refused. Anything else gets `403` (`{"detail", "code"}`) before
+any route runs, or a WebSocket closed before it is accepted. Requests forwarded by the base's Vite dev server
+(port 5273 or 5274) are accepted with that server's per-launch token only. POST bodies must be JSON. Order text is
+limited to 8000 characters, WebSocket messages to 4096 characters, and 32 sockets may be open at once.
+Conversations live in memory and are not stored.

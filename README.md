@@ -68,8 +68,9 @@ start.cmd
 On first run `start.cmd` creates the Python environment, installs dependencies and builds the frontend. It then
 serves the app at **http://127.0.0.1:8742** and opens your browser.
 
-To stop it, run `stop.cmd` or press Ctrl+C in the server window. `stop.cmd` ends only what `start.cmd` or
-`dev.cmd` left listening on ports 8742 and 5273.
+To stop it, run `stop.cmd` or press Ctrl+C in the server window. `stop.cmd` ends only the servers the base
+recorded when it started them (on ports 8742 and 5273). Another program on those ports is left alone.
+`stop.cmd -DryRun` shows what it would stop.
 
 ## Connect your agents
 
@@ -83,8 +84,10 @@ python scripts\install_hooks.py --uninstall  :: remove
 ```
 
 The installer copies the hook to `%USERPROFILE%\.imperial-base\hooks\` and registers that copy, so the code every
-Claude Code session runs lives outside this checkout. Re-run it after updating the base to refresh the copy; it
-also moves an older install that pointed into the checkout. Unknown options are refused without changing anything.
+Claude Code session runs lives outside this checkout. It writes to `settings.json` in your Claude Code
+configuration folder: `CLAUDE_CONFIG_DIR` when that is set, otherwise `%USERPROFILE%\.claude`. Re-run it after
+updating the base to refresh the copy; it also moves an older install that pointed into the checkout. Unknown
+options, extra arguments and a relative `CLAUDE_CONFIG_DIR` are refused without changing anything.
 The installer only adds its own entries and leaves your other hooks untouched. Running it twice changes nothing,
 and it writes a timestamped backup (`settings.json.bak-imperial-*`) before every change. New Claude Code sessions
 report to the base from then on; sessions already running pick it up when restarted.
@@ -131,11 +134,21 @@ default, `IMPERIAL_ORDERS_CWD` to change it).
 
 - Each conversation is one agent. Up to four work at once.
 - You can reply once an agent has finished its turn, or stop it while it works.
-- File edits inside the workspace go through. The workspace may not overlap the Imperial Base checkout, the hook
-  copy, the spool or the database; the base refuses to start agents if it does.
-- Order agents get no shell (Bash and PowerShell are removed) and no MCP servers, and deny rules stop them
-  editing the base's code, hooks and data. Anything else your Claude Code settings do not already allow is
-  refused and reported in the chat.
+- By default order agents get two built-in tools, Edit and Write: they can create and change files in the
+  workspace but not read or search them. Set `IMPERIAL_ORDERS_READ=1` to add Read, Glob and Grep (see the limits
+  in [SECURITY.md](SECURITY.md#limits-residual-risks)). They never get a shell, web access, subagents, skills or
+  MCP servers.
+- A guard checks every tool call and refuses any path outside the workspace. Paths are compared without regard to
+  letter case and after following links and junctions. Deny rules also block the base's code, hooks and data,
+  your Claude Code configuration folder (`CLAUDE_CONFIG_DIR` or `~/.claude`), `~/.claude.json` and common
+  credential files such as `~/.ssh`. Refused actions are reported in the chat.
+- The base refuses to start agents if the workspace overlaps any of those, or if it holds Claude Code project
+  configuration (`CLAUDE.md`, `CLAUDE.local.md`, `.claude`, `.mcp.json`, in any letter case).
+- Order agents still load your user-level Claude Code settings, and your user hooks run in them. Orders stay off
+  if those settings (or managed settings) could widen what an agent may touch: allow rules for file tools, extra
+  working directories, hooks switched off, `bypassPermissions` as the default, or a setting the base does not
+  recognise. These are Claude Code controls, not an operating-system sandbox. See
+  [docs/AGENT_INTEGRATION.md](docs/AGENT_INTEGRATION.md#orders-the-one-command-channel) for the limits.
 - The base keeps its copy of each conversation in memory only. Claude Code keeps its usual session transcript,
   and with the hook installed the agent's events are recorded like any other session's.
 
@@ -172,6 +185,7 @@ All settings are optional environment variables, read when the server starts.
 | `IMPERIAL_READ_USAGE` | `1` | Read token counts and model id from transcripts. `0` turns it off |
 | `IMPERIAL_ORDERS` | `0` | `1` enables the Orders chat. Any other value leaves it off |
 | `IMPERIAL_ORDERS_CWD` | `<base dir>\orders-workspace` | The only folder order agents work in. Must not overlap the checkout or the base's data |
+| `IMPERIAL_ORDERS_READ` | `0` | `1` lets order agents read and search files in their workspace (Read, Glob, Grep) |
 | `IMPERIAL_TRANSCRIPT_ROOTS` | `~\.claude\projects;~\.cursor` | The only folders transcripts are read from (token counts and model id) |
 | `IMPERIAL_MAX_INGEST_BYTES` | `2097152` | Largest request body `/api/ingest` accepts |
 
@@ -183,6 +197,9 @@ test.cmd     :: pytest, vitest and the TypeScript typecheck
 ```
 
 - Asset previews: `http://127.0.0.1:5273/?preview=aircraft` and `?preview=personnel`.
+- In development the backend trusts requests forwarded by the Vite server only through a token that Vite creates
+  when it starts (see [SECURITY.md](SECURITY.md)). Vite must run on port 5273 or 5274; it will not move to another
+  port.
 - After changing frontend code, rebuild for `start.cmd` with `cd frontend && npx vite build`
   (`start.cmd` also rebuilds when it detects stale output).
 - The 3D models are built by Python scripts for Blender in `tools/blender/`. See its
@@ -194,7 +211,8 @@ See [Testing](docs/TESTING.md) for what each suite covers.
 
 ```
 backend/          FastAPI server: hook ingestion, state engine, SQLite store, Orders, WebSocket
-  app/            main.py (routes), engine.py, state.py, store.py, orders.py, system.py, config.py
+  app/            main.py (routes, request checks), engine.py, state.py, store.py, orders.py, orders_guard.py,
+                  redact.py, pathsafe.py, system.py, config.py
   tests/          pytest suites
 frontend/         React + React Three Fiber client
   src/            world, aircraft, vehicles, personnel, agents, interiors, camera, audio, ui, state
@@ -207,16 +225,18 @@ docs/             design and reference documentation
 
 ## Privacy and security
 
-- **Loopback only.** The server binds to `127.0.0.1`. Order and ingest requests must come from this machine with a
-  loopback Host, the base's own Origin (if any) and a JSON body of limited size. The WebSocket refuses pages from
-  other origins.
+- **Loopback only.** The server binds to `127.0.0.1`. Every request and WebSocket connection, including read-only
+  ones, must come from this machine with an exact loopback `Host` on the server's own port, so a web page that
+  points its own domain at 127.0.0.1 (DNS rebinding) is refused. Any `Origin` sent must be the base's own page.
+  Order and ingest requests also need a JSON body of limited size.
 - **No untrusted paths.** Paths from hook events and URLs are checked as text before any filesystem call: network
   shares, device paths and traversal are refused, transcripts are read only from Claude Code's and Cursor's own
   folders, and the web server serves only files inside the built frontend.
-- **The hook keeps little.** It never stores tool inputs or outputs, file contents, full commands or full
-  prompts. File tools are reduced to the file name, prompts to a short redacted excerpt, and secrets such as API
-  keys, tokens and e-mail addresses are redacted before anything is written.
-- **Defence in depth.** The backend accepts only an allow-list of fields and truncates strings again.
+- **The hook keeps little.** It does not store tool inputs or outputs, file contents, full commands or full
+  prompts. File tools are reduced to the file name and prompts to a short excerpt. Recognisable secrets (API keys,
+  tokens, passwords in `KEY=value` or `--password` form, credentials in URLs, e-mail addresses) are redacted
+  before anything is written. Redaction is pattern matching, so it cannot catch every secret.
+- **Defence in depth.** The backend accepts only an allow-list of fields, redacts them again and truncates strings.
 - **One command channel, opt-in.** Sessions started elsewhere are observed only. Orders are off by default and,
   when enabled, reach only the agents the base starts itself, in a workspace separate from the base's code.
 

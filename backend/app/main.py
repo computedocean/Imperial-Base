@@ -7,8 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import json
+import os
+import re
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -22,45 +26,132 @@ from .pathsafe import safe_relative_under
 from .store import Store
 
 MAX_ORDER_BODY_BYTES = 64 * 1024  # an order is at most 8000 characters; this leaves room for JSON escaping
+MAX_WS_CLIENTS = 32  # live sockets open at once; the base's own tabs need one each
+MAX_WS_MESSAGE = 4096  # characters per message from a socket (only pings are expected)
 
 
-LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
-# The Vite dev servers (dev.cmd and the QA preview) serve the base's pages from these ports.
-DEV_ORIGINS = {f"http://{h}:{p}" for h in ("127.0.0.1", "localhost", "[::1]") for p in (5273, 5274)}
+# ---------------------------------------------------------------------------- the local boundary (M2, M3)
+#
+# Every HTTP request and WebSocket handshake passes through LocalBoundary before any route runs. A web page can make
+# the browser send requests to 127.0.0.1, and a site can point its own name at 127.0.0.1 (DNS rebinding) so that its
+# page counts as the same origin; the Host header still carries the site's name and port. So the Host must be
+# exactly one loopback name with the port the server is actually listening on, the caller must be a loopback
+# address, any Origin must be exactly that Host, and a browser that says the request is cross-site is refused on
+# /api and /ws. Forwarding headers (X-Forwarded-Host, Forwarded) are never read: nothing can override the Host.
+
+LOOPBACK_PEERS = {"127.0.0.1", "::1"}
+_HOST_RE = re.compile(r"(127\.0\.0\.1|localhost|\[::1\])(?::([1-9][0-9]{0,4}))?")
+DEV_PROXY_HEADER = b"x-imperial-dev-proxy"
+_TOKEN_RE = re.compile(rb"[A-Za-z0-9_-]{32,128}")
 
 
-def _hostname(value: str) -> str:
-    """Host part of a Host header or an Origin (scheme and port removed)."""
-    v = value.split("://", 1)[-1].split("/", 1)[0]
-    if v.startswith("["):
-        return v.split("]", 1)[0] + "]"
-    return v.rsplit(":", 1)[0] if ":" in v else v
+def parse_host(value: str) -> tuple[str, int | None] | None:
+    """(name, port) for an exact loopback Host header, else None. Accepted: ``127.0.0.1``, ``localhost`` and
+    ``[::1]`` (any letter case), optionally with a decimal port 1-65535 without leading zeros. Refused: other names
+    (including ones that resolve to 127.0.0.1), user info (``a@127.0.0.1``), trailing dots, spaces, extra colons,
+    other IPv6 spellings, percent-encoding, paths, and anything over 64 characters."""
+    if not isinstance(value, str) or not value or len(value) > 64:
+        return None
+    m = _HOST_RE.fullmatch(value.lower())
+    if m is None:
+        return None
+    port = int(m.group(2)) if m.group(2) else None
+    if port is not None and port > 65535:
+        return None
+    return m.group(1), port
 
 
-def _own_origin(origin: str, host_header: str) -> bool:
-    """True when a page's Origin is the base itself: the exact scheme, host and port it was served from
-    (the same as the Host it connects to), or one of the Vite dev servers. Host names alone are not enough:
-    any other program serving a page on 127.0.0.1 at a different port would otherwise pass."""
-    o = origin.strip().lower().rstrip("/")
-    return o == f"http://{host_header.strip().lower()}" or o in DEV_ORIGINS
+def dev_proxy_token(port: int) -> bytes | None:
+    """The token the Vite dev server listening on ``port`` wrote when it started, or None if there is none."""
+    path = config.DEV_PROXY_DIR / f"vite-{port}.token"
+    try:
+        with open(path, "rb") as fh:
+            token = fh.read(256).strip()
+    except OSError:
+        return None
+    return token if _TOKEN_RE.fullmatch(token) else None
+
+
+def boundary_problem(scope: dict[str, Any]) -> str | None:
+    """Why a request or handshake is refused (a short code), or None. Pure function of the ASGI scope plus the
+    dev-proxy token file; called before any route sees the request."""
+    headers = [(k.lower(), v) for k, v in scope.get("headers") or []]
+
+    def values(name: bytes) -> list[bytes]:
+        return [v for k, v in headers if k == name]
+
+    hosts = values(b"host")
+    if len(hosts) != 1:
+        return "host"
+    try:
+        host_text = hosts[0].decode("ascii")
+    except UnicodeDecodeError:
+        return "host"
+    parsed = parse_host(host_text)
+    if parsed is None:
+        return "host"
+    client = scope.get("client")
+    if not client or client[0] not in LOOPBACK_PEERS:
+        return "peer"
+    server = scope.get("server")
+    server_port = server[1] if server and len(server) > 1 and isinstance(server[1], int) else config.PORT
+    port = parsed[1] if parsed[1] is not None else 80
+    if port != server_port:
+        # Only the base's own Vite dev server may forward a request that names its port, proved by the token it
+        # wrote at start-up. Another program on that port does not know it; with no dev server there is no token.
+        if port not in config.DEV_PROXY_PORTS:
+            return "port"
+        sent = values(DEV_PROXY_HEADER)
+        expected = dev_proxy_token(port)
+        if len(sent) != 1 or expected is None or not hmac.compare_digest(sent[0], expected):
+            return "port"
+    origins = values(b"origin")
+    if len(origins) > 1:
+        return "origin"
+    if origins:
+        try:
+            origin = origins[0].decode("ascii")
+        except UnicodeDecodeError:
+            return "origin"
+        if origin.lower() != f"http://{host_text.lower()}":
+            return "origin"
+    path = scope.get("path") or ""
+    if path.startswith(("/api/", "/ws")) or path == "/api":
+        site = values(b"sec-fetch-site")
+        if len(site) > 1 or (site and site[0].lower() not in (b"same-origin", b"none")):
+            return "fetch-site"
+    return None
+
+
+class LocalBoundary:
+    """ASGI middleware: refuse anything ``boundary_problem`` objects to, before routing (HTTP 403, or a WebSocket
+    closed before it is accepted, which the server turns into a 403 handshake response)."""
+
+    def __init__(self, app: Any):
+        self.app = app
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] in ("http", "websocket"):
+            problem = boundary_problem(scope)
+            if problem is not None:
+                if scope["type"] == "http":
+                    body = json.dumps({"detail": "refused: this server only talks to the base on this machine",
+                                       "code": problem}).encode()
+                    await send({"type": "http.response.start", "status": 403,
+                                "headers": [(b"content-type", b"application/json"),
+                                            (b"content-length", str(len(body)).encode())]})
+                    await send({"type": "http.response.body", "body": body})
+                else:
+                    await send({"type": "websocket.close", "code": 1008})
+                return
+        await self.app(scope, receive, send)
 
 
 def require_local(request: Request) -> None:
-    """Refuse anything that is not this machine talking to itself.
-
-    Starting an agent is far more powerful than reading state, so three things are checked: the caller's
-    address, the Host header (a web page that points its own domain name at 127.0.0.1 still sends its
-    own name here), and the Origin header (a page on another site sends that site). The body must be
-    declared as JSON, which a cross-site form or a simple request cannot do without the browser asking first.
-    """
-    if request.client and request.client.host not in LOCAL_HOSTS:
+    """The boundary check again (defence in depth for the endpoints that change state), plus: a POST body must be
+    declared as JSON, which a cross-site form or a simple request cannot do without the browser asking first."""
+    if boundary_problem(request.scope) is not None:
         raise HTTPException(403, "loopback only")
-    host = request.headers.get("host", "")
-    if _hostname(host) not in LOCAL_HOSTS:
-        raise HTTPException(403, "loopback only")
-    origin = request.headers.get("origin")
-    if origin and not _own_origin(origin, host):
-        raise HTTPException(403, "cross-site requests are refused")
     if request.method == "POST" and not _is_json_type(request.headers.get("content-type", "")):
         raise HTTPException(415, "send JSON")
 
@@ -96,13 +187,12 @@ async def read_json_limited(request: Request, limit: int) -> Any:
 def create_app(db_path: str | None = None, spool_path: str | None = None, start_tailer: bool = True,
                order_runner: Runner | None = None, orders_cwd: str | None = None) -> FastAPI:
     store = Store(db_path or config.DB_PATH)
-    from pathlib import Path
-
     engine = Engine(store, Path(spool_path) if spool_path else config.SPOOL_PATH)
     clients: set[WebSocket] = set()
     orders = OrderManager(Path(orders_cwd) if orders_cwd else config.ORDERS_CWD, engine.broadcast,
                           runner=order_runner, enabled=config.ORDERS_ENABLED,
-                          protected=config.protected_paths(), settings_file=config.ORDERS_SETTINGS)
+                          protected=config.protected_paths(), settings_dir=config.ORDERS_SETTINGS_DIR,
+                          read_access=config.ORDERS_READ)
 
     async def system_loop() -> None:
         system.sample()  # prime psutil cpu_percent
@@ -115,15 +205,21 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         tasks = []
-        if start_tailer:
+        record = None
+        if start_tailer:  # a real server (tests run with start_tailer=False and leave no records behind)
             tasks.append(asyncio.create_task(engine.tail_spool_forever()))
             tasks.append(asyncio.create_task(system_loop()))
+            record = write_run_record(config.RUN_DIR)
         yield
         for t in tasks:
             t.cancel()
         await orders.shutdown()
+        if record is not None:
+            with contextlib.suppress(OSError):
+                record.unlink()
 
-    app = FastAPI(title="Imperial Base", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Imperial Base", version="0.1.0", lifespan=lifespan, debug=False)
+    app.add_middleware(LocalBoundary)
     app.state.engine = engine
     app.state.orders = orders
 
@@ -196,7 +292,8 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
     def commands() -> dict[str, Any]:
         st = orders.status()
         return {"enabled": st["enabled"], "available": ["orders"] if st["enabled"] else [],
-                "note": "Orders start a Claude Code agent in the base's own folder. Everything else is observation only."}
+                "note": "Orders start a Claude Code agent in a separate workspace folder. Everything else is "
+                        "observation only."}
 
     # ---- orders: the Commander's chat (see orders.py)
     async def order_text(request: Request) -> Any:
@@ -238,36 +335,37 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
-        # Browsers let any web page open a websocket to any address, so the page's Origin is checked here.
-        # A page from anywhere else (its Origin is not exactly the scheme, host and port it connected to,
-        # nor a Vite dev server) is refused outright.
-        host_header = sock.headers.get("host", "")
-        host = _hostname(host_header)
-        origin = sock.headers.get("origin")
-        if origin and not _own_origin(origin, host_header):
+        # LocalBoundary has already refused other hosts, ports, callers and Origins before this handler runs (a
+        # browser lets any page open a websocket to any address). Checked again here as a second layer.
+        if boundary_problem(sock.scope) is not None:
             await sock.close(code=1008)
             return
-        # Conversations with agents go only to this machine talking to itself (same rule as the order endpoints).
-        local = host in LOCAL_HOSTS and (sock.client is None or sock.client.host in LOCAL_HOSTS)
+        if len(clients) >= MAX_WS_CLIENTS:
+            await sock.close(code=1013)  # try again later
+            return
         await sock.accept()
         clients.add(sock)
 
         async def push(msg: dict[str, Any]) -> None:
-            if not local and msg.get("type") in ("order", "orders"):
-                return
             await sock.send_json(msg)
 
         engine.listeners.add(push)
         try:
             await sock.send_json(engine.snapshot())
             await sock.send_json({"type": "system", "system": await asyncio.to_thread(system.sample)})
-            if local:
-                await sock.send_json({"type": "orders", **orders.status(), "orders": orders.list()})
+            await sock.send_json({"type": "orders", **orders.status(), "orders": orders.list()})
             while True:
-                msg = await sock.receive_json()
+                text = await sock.receive_text()
+                if len(text) > MAX_WS_MESSAGE:
+                    await sock.close(code=1009)  # too big
+                    break
+                try:
+                    msg = json.loads(text)
+                except ValueError:
+                    continue
                 if isinstance(msg, dict) and msg.get("type") == "ping":
                     await sock.send_json({"type": "pong", "ts": time.time()})
-        except (WebSocketDisconnect, RuntimeError):
+        except (WebSocketDisconnect, RuntimeError, KeyError):  # KeyError: a binary frame where text was expected
             pass
         finally:
             engine.listeners.discard(push)
@@ -289,6 +387,27 @@ def create_app(db_path: str | None = None, spool_path: str | None = None, start_
             return FileResponse(index)
 
     return app
+
+
+def write_run_record(run_dir: Path) -> Path | None:
+    """Note this server process (and its parent: with --reload the parent holds the listening socket) with their
+    start times, so scripts/stop.ps1 can tell the base's own server from an unrelated program on the same port.
+    Best effort: without a record the stop script simply leaves the process alone."""
+    try:
+        import psutil
+
+        me = psutil.Process(os.getpid())
+        parent = me.parent()
+        data = {"kind": "backend", "pid": me.pid, "started": me.create_time(),
+                "parent": parent.pid if parent else None, "parent_started": parent.create_time() if parent else None}
+        run_dir.mkdir(parents=True, exist_ok=True)
+        path = run_dir / f"backend-{me.pid}.json"
+        tmp = run_dir / f"backend-{me.pid}.json.tmp"
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(path)
+        return path
+    except Exception:  # never stop the server over this; the stop script then refuses to touch the process
+        return None
 
 
 # Run with: uvicorn --factory app.main:create_app

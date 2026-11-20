@@ -195,9 +195,11 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 * ✅ **Shuttle pad** moved into the open beside the North Gate road; the shuttle and its ground crew re-routed.
 * ✅ **Speeder bike patrol** loops out of the East Gate and back in through the North Gate.
 * ✅ **Consoles**: agent consoles, terminals and the security desk rebuilt with sloped key decks, scopes and lights.
-* ✅ **`stop.cmd`** ends whatever `start.cmd` / `dev.cmd` left listening on ports 8742 and 5273.
+* ✅ **`stop.cmd`** ends the servers `start.cmd` / `dev.cmd` left listening on ports 8742 and 5273 (since phase 3:
+  only processes the base recorded itself).
 * ✅ **Orders chat** (Missions tab, `backend/app/orders.py`, `ui/OrdersChat.tsx`): the Commander types an order and
-  a headless Claude Code agent carries it out in this project's folder only, with `acceptEdits` permissions. Up to
+  a headless Claude Code agent carries it out in a separate workspace folder (originally this project's folder; see
+  the security phases below), with `acceptEdits` permissions. Up to
   four at once; reply after a turn, or stop a running agent. Local-only endpoints, conversations in memory only.
   Tests: `backend/tests/test_orders.py` (16), `frontend/src/lib/orders.test.ts` (4).
 * ✅ **Hardening (2026-11-20)**: the Origin check now compares scheme, host and port, so pages served by other
@@ -214,6 +216,47 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
   transcript paths checked as text and read only from `~/.claude/projects` and `~/.cursor`.
 * ✅ **H3 catch-all route:** URL paths checked as text and resolved inside `frontend/dist` before any filesystem call.
 * Tests: `backend/tests/test_security_high.py`.
+
+### Follow-up review fixes (2026-11-20, uncommitted at time of writing)
+
+* Orders get an explicit tool allowlist (`--tools Read,Edit,Write,Glob,Grep`) in place of the Bash/PowerShell
+  blocklist, `--disallowedTools mcp__*`, and the dangerous tools denied by name in `--settings`.
+* The Claude Code configuration folder (`CLAUDE_CONFIG_DIR` or `~/.claude`) and `~/.claude.json` are protected
+  paths (Read and Edit denied, no overlapping workspace); SQLite `-wal`/`-shm`/`-journal` files are protected
+  with the database; every protected path is denied exactly and with `/**`.
+* Start-up refuses a workspace with `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json` or a non-empty `.claude` at its
+  top level (any letter case); Edit is denied for those names anywhere in the workspace.
+* Not verified: the suites were not re-run in the session that made these changes, and no live order agent was
+  started. See the limits in `docs/AGENT_INTEGRATION.md`.
+
+## Security remediation, phase 3 (2026-11-20, uncommitted at time of writing)
+
+* **M2 Host validation:** one check before every route and WebSocket handshake (`LocalBoundary` in `main.py`):
+  exact loopback `Host` on the server's own port, loopback caller, `Origin` equal to the `Host`, no cross-site
+  fetches of `/api` and `/ws`, forwarding headers ignored, `--no-proxy-headers` in the start scripts. Read-only
+  endpoints are covered too; a DNS-rebinding page no longer receives the snapshot over the WebSocket.
+* **M3 dev-server trust:** the fixed Vite-origin allowlist is gone. The Vite dev server creates a token at start-up,
+  writes it to `<base dir>\dev-proxy\vite-<port>.token` and adds it to the requests it proxies; the backend
+  accepts a dev-port `Host` only with that token. `strictPort` keeps Vite on its port.
+* **M4 redaction:** new patterns in the hook (`DB_PASSWORD=`, `ANTHROPIC_API_KEY=`, quoted JSON keys,
+  `--password x`, URL credentials, `Authorization` headers, `sk_live_`, `hf_`, `glpat-`, long hex), applied to
+  every text field written. The backend applies the same patterns again (`redact.py`). Redaction is idempotent,
+  and spool errors are logged by type only.
+* **N1 Orders file boundary:** a `PreToolUse` guard (`orders_guard.py`) refuses any path outside the workspace. Read,
+  Glob and Grep are off by default (`IMPERIAL_ORDERS_READ=1` to enable), because a hook that cannot run does not
+  block the call. Deny rules now also cover common credential files.
+* **H1 follow-up:** user and managed Claude Code settings are inspected before every launch. Orders stay off for
+  file-tool allow rules, `additionalDirectories`, `disableAllHooks`, `allowManagedHooksOnly`,
+  `bypassPermissions`, unreadable files and unknown settings. Only reason codes are reported.
+* **N3:** each launch gets a uniquely named settings file (`orders-settings\orders-*.json`, created exclusively).
+  It is removed when that agent's process ends and not before.
+* **N4:** the guard compares paths without regard to letter case, slash direction or drive-letter case on Windows,
+  after resolving links, junctions and short names. Tests show where case-sensitive deny rules alone would miss a
+  variant.
+* **Operational:** `stop.ps1` stops only processes recorded by the base (process id and start time, `-DryRun` to
+  preview); registries, WebSocket messages and connections are bounded; `hook_installed` and the installer follow
+  `CLAUDE_CONFIG_DIR`; the installer validates all arguments before changing anything; error pages carry no traces.
+* Tests: `backend/tests/test_security_medium.py`, plus updated expectations in the existing suites.
 
 ## Known limitations
 

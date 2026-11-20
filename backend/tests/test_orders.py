@@ -10,11 +10,13 @@ from fastapi.testclient import TestClient as _TestClient
 
 
 class _Local(_TestClient):
-    """This machine talking to itself, like the browser on the base. websocket_connect ignores base_url and
-    would send Host: testserver, so the real local host is set there too."""
+    """This machine talking to itself, like the browser on the base. websocket_connect ignores base_url and would
+    connect to ws://testserver (port 80), so the real local address and Host are given there too."""
 
     def websocket_connect(self, url, *args, headers=None, **kwargs):
-        return super().websocket_connect(url, *args, headers={"host": "127.0.0.1:8742", **(headers or {})}, **kwargs)
+        from urllib.parse import urljoin
+        return super().websocket_connect(urljoin("ws://127.0.0.1:8742", url), *args,
+                                         headers={"host": "127.0.0.1:8742", **(headers or {})}, **kwargs)
 
 
 def TestClient(app):  # noqa: N802
@@ -219,9 +221,9 @@ def test_requests_from_other_sites_are_refused(rig):
     r = client.post("/api/orders", content='{"text": "x"}', headers={"content-type": "text/plain"})
     assert r.status_code == 415
     assert script.calls == []
-    # the base's own pages are welcome: the built app and the Vite dev server
-    for origin in ("http://127.0.0.1:8742", "http://localhost:5273"):
-        assert client.post("/api/orders", json={"text": "x"}, headers={"origin": origin}).status_code == 200
+    # the base's own page is welcome; a dev-server origin is not trusted by its port number (M3)
+    assert client.post("/api/orders", json={"text": "x"}, headers={"origin": "http://127.0.0.1:8742"}).status_code == 200
+    assert client.post("/api/orders", json={"text": "x"}, headers={"origin": "http://localhost:5273"}).status_code == 403
 
 
 def test_the_live_socket_refuses_other_sites_and_keeps_conversations_local(rig):
@@ -233,15 +235,11 @@ def test_the_live_socket_refuses_other_sites_and_keeps_conversations_local(rig):
     with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/ws", headers={"origin": "https://evil.example"}):
             pass
-    # a foreign name pointed at this machine: its page matches its own Host, but gets no conversations
-    with client.websocket_connect("/ws", headers={"host": "evil.example:8742", "origin": "http://evil.example:8742"}) as ws:
-        assert ws.receive_json()["type"] == "snapshot"
-        assert ws.receive_json()["type"] == "system"
-        client.post("/api/orders", json={"text": "second private order"})
-        client.post("/api/ingest", json={"v": 1, "event": "SessionStart", "session_id": "S9"})
-        msg = ws.receive_json()
-        assert msg["type"] == "event"  # no "orders" list before it, and no "order" update either
-        assert "private order" not in str(msg)
+    # a foreign name pointed at this machine (DNS rebinding): its page matches its own Host, and is refused
+    # outright before anything is sent - no snapshot, no conversations (M2)
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws", headers={"host": "evil.example:8742", "origin": "http://evil.example:8742"}):
+            pass
     # the base's own page still gets them
     with client.websocket_connect("/ws", headers={"origin": "http://127.0.0.1:8742"}) as ws:
         ws.receive_json(); ws.receive_json()

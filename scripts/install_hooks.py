@@ -1,4 +1,5 @@
-"""Install / uninstall the Imperial Base Claude Code hook in ~/.claude/settings.json.
+"""Install / uninstall the Imperial Base Claude Code hook in ~/.claude/settings.json (or, when CLAUDE_CONFIG_DIR is
+set, in settings.json inside that folder, which is where Claude Code then reads its user settings).
 
 * The hook script is copied to ``~/.imperial-base/hooks/imperial-hook.js`` and that copy is what Claude Code runs.
   The copy lives outside the Imperial Base checkout, so nothing that can edit the checkout (an order agent, for
@@ -32,6 +33,14 @@ MARK = "imperial-hook.js"
 
 
 def settings_path() -> Path:
+    """The user settings file Claude Code reads: in CLAUDE_CONFIG_DIR when that is set, else ~/.claude."""
+    value = os.environ.get("CLAUDE_CONFIG_DIR")
+    if value:
+        p = Path(value)
+        if not p.is_absolute():
+            print("CLAUDE_CONFIG_DIR is not an absolute path; nothing was changed.", file=sys.stderr)
+            sys.exit(2)
+        return p / "settings.json"
     return Path.home() / ".claude" / "settings.json"
 
 
@@ -160,9 +169,14 @@ USAGE = __doc__.strip().splitlines()[-4:]
 if __name__ == "__main__":
     args = sys.argv[1:]
     if len(args) > 1:
-        print("one option at a time.\n" + "\n".join(USAGE), file=sys.stderr)
+        print("one option at a time; nothing was changed.\n" + "\n".join(USAGE), file=sys.stderr)
         sys.exit(2)
     arg = args[0] if args else ""
+    if arg not in ("--help", "-h", "--status", "--uninstall", ""):
+        print(f"unknown option {arg!r}; nothing was changed.\n" + "\n".join(USAGE), file=sys.stderr)
+        sys.exit(2)
+    if arg not in ("--help", "-h"):
+        settings_path()  # a relative CLAUDE_CONFIG_DIR stops here, before the hook copy or anything else is written
     if arg in ("--help", "-h"):
         print(__doc__.strip())
     elif arg == "--status":

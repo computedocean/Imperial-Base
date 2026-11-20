@@ -8,11 +8,13 @@ from fastapi.testclient import TestClient as _TestClient
 
 
 class _Local(_TestClient):
-    """This machine talking to itself, like the browser on the base. websocket_connect ignores base_url and
-    would send Host: testserver, so the real local host is set there too."""
+    """This machine talking to itself, like the browser on the base. websocket_connect ignores base_url and would
+    connect to ws://testserver (port 80), so the real local address and Host are given there too."""
 
     def websocket_connect(self, url, *args, headers=None, **kwargs):
-        return super().websocket_connect(url, *args, headers={"host": "127.0.0.1:8742", **(headers or {})}, **kwargs)
+        from urllib.parse import urljoin
+        return super().websocket_connect(urljoin("ws://127.0.0.1:8742", url), *args,
+                                         headers={"host": "127.0.0.1:8742", **(headers or {})}, **kwargs)
 
 
 def TestClient(app):  # noqa: N802

@@ -151,6 +151,12 @@ class Task:
     tool_calls: int = 0
 
 
+MAX_AGENTS = 2000  # agents kept in memory; the oldest by last event are dropped first
+MAX_TASKS = 5000  # tasks kept in memory; finished ones are dropped first, oldest first
+MAX_PENDING_PER_SESSION = 200  # queued Agent-tool calls per session
+MAX_PENDING_SESSIONS = 500  # sessions with queued Agent-tool calls
+
+
 class Registry:
     def __init__(self) -> None:
         self.agents: dict[str, Agent] = {}
@@ -374,7 +380,33 @@ class Registry:
                     c.activity = "Parent session ended before a completion event was received"
                     changed.append(c)
         # other / unknown events are recorded but do not change status
+        self._trim(keep=a.id)
         return changed, changed_tasks
+
+    def _trim(self, keep: str) -> None:
+        """Hold the in-memory maps to fixed sizes. Events stay in the database; only the live view forgets."""
+        if len(self.tasks) > MAX_TASKS:
+            extra = len(self.tasks) - MAX_TASKS
+            finished = [tid for tid, t in self.tasks.items() if t.status != "in_progress"]
+            drop = finished[:extra]
+            if len(drop) < extra:  # all in progress: the oldest go anyway
+                chosen = set(drop)
+                drop += [tid for tid in self.tasks if tid not in chosen][: extra - len(drop)]
+            for tid in drop:
+                del self.tasks[tid]
+        if len(self.agents) > MAX_AGENTS:
+            oldest = sorted((a for a in self.agents.values() if a.id != keep), key=lambda a: a.last_event_at)
+            for a in oldest[: len(self.agents) - MAX_AGENTS]:
+                del self.agents[a.id]
+                parent = self.agents.get(a.parent_id or "")
+                if parent and a.id in parent.children:
+                    parent.children.remove(a.id)
+        for sid, queue in self.pending_delegations.items():
+            if len(queue) > MAX_PENDING_PER_SESSION:
+                del queue[: len(queue) - MAX_PENDING_PER_SESSION]
+        if len(self.pending_delegations) > MAX_PENDING_SESSIONS:
+            for sid in list(self.pending_delegations)[: len(self.pending_delegations) - MAX_PENDING_SESSIONS]:
+                del self.pending_delegations[sid]
 
     def set_tokens(self, agent_id: str, usage: dict[str, Any]) -> Agent | None:
         a = self.agents.get(agent_id)
