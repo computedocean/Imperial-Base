@@ -2,9 +2,41 @@
 
 ## Automated suites
 
+Latest full run, 2026-11-20 after the command interface overhaul and its follow-up fixes: **629 backend tests
+collected, 626 passed and 3 skipped** (the three symlink tests in `test_security_high.py` and
+`test_security_medium.py` skip on Windows without Developer Mode or admin rights; they run where symlinks can be
+created), **155 frontend tests in 20 files passed**, typecheck clean, `npm run build` succeeded. No lint step is
+configured in this project.
+
+### Frontend: command interface (added 2026-11-20)
+
+* `lib/intel.test.ts`: event merging and coverage; activity buckets (events, failures, permission requests,
+  out-of-window and unreadable timestamps); incident classification from hook events and Orders guard notices;
+  incident filters; the ISB alert-level rule (unknown when offline, nominal, guarded, elevated and high thresholds,
+  capped tool failures, stale attention ignored); department occupancy.
+* `lib/cases.test.ts`: opening, notes (trimmed and length-limited), close and reopen, linking evidence once,
+  eviction of the oldest closed case at the limit, defensive parsing of stored data.
+* `lib/search.test.ts`: ranking (exact, prefix, word start, substring, every token required), keyboard stepping
+  for lists and tab strips, record entries for agents, missions, events, case files and simulated aircraft.
+* `lib/demo.test.ts`: demo mode only on explicit `?demo=1`; every demo record labelled; consistent parent and
+  child links; ordered unique event ids; each incident kind present.
+* `lib/feed.test.ts`: feed filters and counts, text severity labels, SIM prefix removal.
+* `lib/orders.test.ts`: two added tests that Orders refuse in demo mode before any request is made.
+* Browser checks (not automated in CI; run by hand with headless Chromium and an isolated server on port 8743 with
+  a temporary database): rail arrow, Home and End keys; `Ctrl K`, typing and Enter opening the agent; Escape
+  closing the inspector; filing an incident to a new case and adding a note; demo case files stored under their own
+  key and no POST requests in demo mode; four test events posted to `/api/ingest` appearing in the ISB register;
+  layouts at 1600, 1400, 1100 and 390 px wide.
+* Follow-up browser pass (same isolated set-up, script kept out of the repository): every panel (Overview, Agents,
+  Missions, Events, ISB, Air, Sites) in live and demo mode at **1600 × 900** and **420 × 860**, checking that the
+  panel renders, no horizontal page overflow, no control pushed off screen, no overlap between the top bar, rail,
+  panel, feed and inspector, and an accessible name on every interactive element. Also: 40 Tab stops all with a
+  visible focus ring; demo mode makes no `/api` request and opens no WebSocket, including inside the server bunker
+  interior; a case note containing HTML renders as plain text. No page errors in any run.
+
 ```bat
-backend\.venv\Scripts\python -m pytest -q backend\tests     :: 121 tests (+2 skipped)
-cd frontend && npx vitest run                               :: 111 tests in 15 files
+backend\.venv\Scripts\python -m pytest -q backend\tests     :: 629 tests (626 passed, 3 skipped without symlink rights)
+cd frontend && npx vitest run                               :: 155 tests in 20 files
 cd frontend && npx tsc --noEmit -p .                         :: strict typecheck
 ```
 

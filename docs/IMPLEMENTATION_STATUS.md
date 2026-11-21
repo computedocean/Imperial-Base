@@ -258,6 +258,49 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
   `CLAUDE_CONFIG_DIR`; the installer validates all arguments before changing anything; error pages carry no traces.
 * Tests: `backend/tests/test_security_medium.py`, plus updated expectations in the existing suites.
 
+## Command interface overhaul (2026-11-20, uncommitted at time of writing)
+
+Plan and audit: [IMPERIAL_BASE_IMPROVEMENT_PLAN.md](IMPERIAL_BASE_IMPROVEMENT_PLAN.md). Frontend only; no backend,
+API, security-control or dependency change.
+
+* ✅ **Visual system** (`ui/styles.css`, rewritten): black and charcoal surfaces, steel structure, one crimson
+  accent; Rajdhani for display, the system UI face for body text, JetBrains Mono for data; 4 px spacing; primary,
+  secondary, ghost and danger buttons; segmented chips; cards, tables, meters and charts; empty, loading
+  (skeleton) and offline states; reduced-motion respected.
+* ✅ **Shell** (`ui/HUD.tsx`): navigation rail (Overview, Agents, Missions, Events, ISB, Air, Sites) with arrow,
+  Home and End keys and `aria-controls`; top bar with link and duty status, command search and a **Display** menu
+  (time of day, quality, sound, labels, frame rate). Responsive: short camera labels below 1480 px, two-row top bar
+  below 1000 px, bottom navigation and panel sheet below 760 px (checked at 1600, 1400, 1100 and 390 px wide).
+* ✅ **Command overview** (`ui/Overview.tsx`): duty tiles that open the filtered roster, items needing attention,
+  hook activity chart (1 h / 24 h, failures stacked) over the latest 2,000 stored events, system status (link,
+  hook, event store, Orders channel, host CPU and memory, which were received before but never shown), department
+  occupancy, scenery summary tagged SIM.
+* ✅ **ISB panel** (`ui/Isb.tsx`, `lib/intel.ts`): alert level by a stated rule (shown in the panel); incident
+  register from failed turns, tool failures, authorisation requests and Orders guard refusals, with search, severity,
+  type and time filters; case files with linked evidence and notes (`lib/cases.ts`, this browser only); security
+  posture checks; ISB personnel; simulated perimeter contacts kept apart and tagged SIM.
+* ✅ **Command search** (`ui/CommandPalette.tsx`, `lib/search.ts`): `Ctrl K` or `/`; agents, missions,
+  meaningful events, case files, simulated aircraft, panels, facilities, camera modes, tours and actions.
+* ✅ **Feed** (`lib/feed.ts`): All / Agents / Alerts / Simulation filters with counts, severity words next to colour,
+  show more, keyboard access. Source tags LIVE, SIM or DEMO on every line.
+* ✅ **Keyboard**: mission rows, feed items, key/value rows and department rows are now reachable and activate with
+  Enter or Space; filter strips are radio groups with arrow keys.
+* ✅ **Demo mode** (`?demo=1`, `lib/demo.ts`): fixed fictional dataset; DEMO DATA badge; DEMO AGENT nameplates;
+  no live link; Orders refuse before any request (`lib/orders.ts`); demo case files under their own storage key.
+* Tests: `intel.test.ts`, `cases.test.ts`, `search.test.ts`, `demo.test.ts`, `feed.test.ts`, plus two demo
+  tests in `orders.test.ts`. Browser checks (headless Chromium with the GPU, isolated server on port 8743 with a
+  temporary database): rail keys, search and Enter, Escape, filing an incident to a case and adding a note, demo
+  isolation (no POST requests, real case key untouched), and the live path with four test events posted to
+  `/api/ingest`.
+* Follow-up fixes after a browser pass at 1600 × 900 and 420 × 860:
+  * Demo isolation: the wall displays in the server bunker and AI labs (`interiors/SystemWall.tsx`) fetched
+    `GET /api/system` and were headed "(LIVE)" even in demo mode. In demo mode they no longer contact the server and
+    read "(DEMO DATA)".
+  * Phones: the agent inspector half-covered the open panel and its search field. Below 760 px it now takes the
+    panel's whole area while open and the panel is hidden (also from the keyboard and screen readers) until it closes.
+* Not verified: screen-reader announcements with a real screen reader; the interface on a touch device (only a
+  390 px viewport in a desktop browser); a long live session with many thousands of events.
+
 ## Known limitations
 
 * **Hook not installed globally yet.** Run `python scripts\install_hooks.py` once (see README). Until then
@@ -278,6 +321,8 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 * The walker and the duellists do not react to vehicles or personnel crossing their path.
 * The picket TIE appears at range without a launch sequence; interceptors still only chase.
 * The fuel dump is rebuilt instantly when its timer ends; nothing else on the ground can be destroyed.
+* The overview chart and the ISB register cover the latest 2,000 stored events; older events are not analysed
+  (the panel says how far back the data reaches). Case files live in one browser and are not shared or backed up.
 
 ## Repository state
 

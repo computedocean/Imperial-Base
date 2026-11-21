@@ -52,7 +52,7 @@ function AgentBody({ id }: { id: string }) {
       {(inside || selected) && (
         <Html position={[0, 2.35, 0]} center distanceFactor={6} zIndexRange={[4, 0]} style={{ pointerEvents: 'none' }}>
           <div className={`nameplate ${selected ? 'sel' : ''}`} style={{ borderColor: color }}>
-            <div className="np-live">● LIVE AGENT</div>
+            <div className="np-live">{useStore.getState().demo ? '● DEMO AGENT' : '● LIVE AGENT'}</div>
             <div className="np-name">{agent.name}</div>
             <div className="np-role">{agent.role}</div>
             <div className="np-status" style={{ color }}>{agent.status.toUpperCase()}{agent.active_tool ? ` · ${agent.active_tool}` : ''}{agent.stale ? ' · ACTIVITY UNKNOWN' : ''}</div>
@@ -143,7 +143,7 @@ function DepartmentBeacons({ agents }: { agents: AgentInfo[] }) {
             {list.length > 0 && (
               <group position={[0, -1.5, 0]}>
                 <Text fontSize={5.5} color="#e8f4ff" anchorX="center" anchorY="top" outlineWidth={0.2} outlineColor="#000">
-                  {`${list.length} LIVE AGENT${list.length > 1 ? 'S' : ''}`}
+                  {`${list.length} ${useStore.getState().demo ? 'DEMO' : 'LIVE'} AGENT${list.length > 1 ? 'S' : ''}`}
                 </Text>
                 {list.slice(0, 12).map((a, i) => (
                   <mesh key={a.id} position={[(i - (Math.min(12, list.length) - 1) / 2) * 3.2, -6.4, 0]}>

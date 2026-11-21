@@ -42,6 +42,9 @@ Everything runs on your own computer. No cloud services, no paid APIs, no Docker
 
 - **Live agents.** Sessions, subagents and their parent/child links, the active tool, errors, token use and
   turn summaries, all from Claude Code's supported hooks. Cursor sessions are reported too.
+- **Command overview and ISB.** One panel answers "is the base healthy, and does anything need me?"; the
+  Imperial Security Bureau panel keeps an incident register, case files and a stated-rule alert level. Command
+  search (`Ctrl K`) jumps to any agent, mission, event, facility or view.
 - **"Needs you" alerts.** A banner, a pulsing top-bar pill and the browser tab title tell you when an agent is
   waiting for a permission or a turn has failed. One click takes you to it.
 - **Orders (opt-in).** A chat that starts headless Claude Code agents in a workspace folder of their own, up to
@@ -97,7 +100,9 @@ To try it for one session without touching global settings, pass the hook on the
 
 ## Using the base
 
-![The command HUD: agent roster, top bar and event feed over the live base](docs/images/base-hud.jpg)
+![The command overview in demo mode: duty tiles, items needing attention, hook activity chart and the activity feed over the base](docs/images/command-overview.jpg)
+
+*Shown in demo mode (`?demo=1`): every agent, mission and event in this picture is fictional.*
 
 ### Controls
 
@@ -108,23 +113,50 @@ To try it for one session without touching global settings, pass the hook on the
 | `3` First person | Click to lock the mouse; `WASD` to move, `Shift` to run, `E` at doors, `Esc` to release |
 | `4` Third person | A commander avatar: `WASD`, drag to turn the camera, wheel to zoom, `E` at doors |
 | `5` Cinematic | Automated tours: flyover, shuttle arrival, hangar, command chamber, server bunker, agent activity |
-| `H` / `L` | Hide the HUD / toggle building labels |
+| `Ctrl K` or `/` | Command search: agents, missions, events, case files, facilities, views, tours and actions |
+| `[` / `]` | Previous / next command panel. Arrow keys move along the navigation rail |
+| `H` / `L` | Hide the interface / toggle building labels |
 | `N` | Cycle the time of day: golden hour, dusk, night |
-| `S` or **SOUND** | Sound on or off, with a volume slider. Off by default |
+| `S` | Sound on or off (volume in the **Display** menu). Off by default |
 | Click | Agents, aircraft and building labels open the inspector; **Follow** attaches the camera |
 
-Quality (LOW, MEDIUM, HIGH, CINEMATIC) is chosen in the top bar. Sound, quality and time of day are remembered
-per browser.
+Time of day, graphics quality (Low, Medium, High, Cinematic), sound and labels live in the **Display** menu at the
+right of the top bar. They are remembered per browser.
 
 ### Panels
 
+The navigation rail on the left (a bottom bar on phones) opens one panel at a time; click the active tab again
+to fold it away.
+
 | Tab | What it does |
 |---|---|
-| **Agents** | The roster with filters (working, needs you, standby, failed) and per-agent details |
-| **Missions** | Every task, plus the **Orders** chat at the bottom |
-| **Events** | The raw event stream |
-| **Air Control** | Shuttle arrivals and departures, fighter patrols, the X-wing attack, hangar doors, the freighter escape, the walker patrol and the lightsaber duel |
-| **Facilities** | View or walk into Command, Hangar, Intelligence, Engineering, Operations, AI Labs, Security and the Server Bunker; start any cinematic tour |
+| **Overview** | Command overview: agents that need you, recent failures, a chart of hook activity (last hour or 24 hours, failures stacked), system status (agent link, capture hook, event store, Orders channel, host CPU and memory) and department occupancy |
+| **Agents** | The roster with search, status and department filters, and per-agent details |
+| **Missions** | Every task with search and status filters, plus the **Orders** chat at the bottom |
+| **Events** | The live event stream with search and type filters (errors, tools, lifecycle) |
+| **ISB** | Imperial Security Bureau: an alert level derived by a stated rule, the incident register (failed turns, tool failures, authorisation requests, Orders guard refusals) with search and filters, case files with notes, and a security posture check |
+| **Air** | Shuttle arrivals and departures, fighter patrols, the X-wing attack, hangar doors, the freighter escape, the walker patrol and the lightsaber duel |
+| **Sites** | View or walk into Command, Hangar, Intelligence, Engineering, Operations, AI Labs, Security and the Server Bunker; start any cinematic tour |
+
+### ISB and case files
+
+The ISB panel only uses signals the base already records. The alert level is a fixed rule, shown in the panel: 3
+points per agent reporting a failed turn, 1 per agent waiting for authorisation, 1 per tool failure in the last hour
+(at most 4), 2 per Orders guard refusal in the last hour, 2 when the capture hook is not installed. 0 is nominal,
+1 to 3 guarded, 4 to 7 elevated, 8 or more high. With the link offline it reads *unknown*. Simulated contacts
+(X-wings, the freighter) are listed separately and never change the level.
+
+Case files are your own notes on an agent or an incident. They are kept in this browser's local storage and are
+never sent to the base. The overview and ISB read the latest 2,000 stored events from `GET /api/events` (once a
+minute while one of those panels is open) and say how far back that reaches.
+
+### Demo mode
+
+Open `http://127.0.0.1:8742/?demo=1` to preview the interface with a fixed, fictional dataset. A **DEMO DATA**
+badge stays in the top bar, nameplates read DEMO AGENT, every demo record ends in "(demo)", the live link is not
+opened and Orders refuse before anything is sent. Beyond loading the page itself, demo mode makes no API request: the overview, the ISB
+register and the telemetry walls inside the base use the demo sample only (the walls read DEMO DATA). Demo case
+files use their own storage key. Remove `?demo=1` to return to live data.
 
 ### Orders
 
@@ -255,6 +287,7 @@ Details: [Agent integration](docs/AGENT_INTEGRATION.md) and [Security policy](SE
 | [Performance](docs/PERFORMANCE.md) | Budgets, quality presets and measurements |
 | [Testing](docs/TESTING.md) | Test suites and how each feature was verified |
 | [Implementation status](docs/IMPLEMENTATION_STATUS.md) | Feature checklist, change log and known limitations |
+| [Interface improvement plan](docs/IMPERIAL_BASE_IMPROVEMENT_PLAN.md) | Audit findings and the plan behind the command interface overhaul |
 | [Build notes](docs/SKILL_INVENTORY.md) | The capability assessment made at the start of the project |
 
 Contributions are welcome: see [Contributing](CONTRIBUTING.md).
