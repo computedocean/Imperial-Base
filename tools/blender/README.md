@@ -109,8 +109,30 @@ It de-duplicates, reorders and quantises the geometry and packs it with Meshopt.
 its GLB node (instancing, merging) must use `plainGeometry()` from `Baked.tsx`, because positions are stored as
 scaled integers.
 
-## The march leader (generated model)
+## The march leader: rigged knight (current)
 
+`knight.py` builds `frontend/public/models/knight.glb`, the hooded knight who leads the march, with a skeleton, arms
+and legs:
+
+```
+%B% -b --factory-startup -P tools/blender/knight.py -- --src tools/blender/assets/animated_human_cc0.glb --out frontend/public/models
+```
+
+The body and its Walk animation come from "Animated Human" by Quaternius (CC0 1.0, https://poly.pizza/m/c3Ibh9I3udk),
+saved in `assets/` turned to face -Y and scaled to 1.85 m. The script dresses it in an original design: a fitted
+tunic split at the front below the belt, flared sleeves, a deep hood with an overhanging brim, a long cloak that hangs
+behind the arms, a belt with buckle and sash tails, and boots, gloves and an undersuit painted onto the body. Every
+garment is weighted to the skeleton. A ridged saber hilt is bound to the right-hand bone, with a `BladeMount` empty at
+the emitter where the app draws the lit blade (along the mount's +Y).
+
+Two animations are exported: `Walk`, and `WalkSaber` (the same walk with the right arm holding the blade low and
+forward, `SABER_HOLD`). The app (`personnel/March.tsx`) sets the clip time from the march's stride phase every frame,
+so his steps keep time with the column, and blends into `WalkSaber` as the blade ignites. 22,000 triangles, 0.95 MB.
+It runs in a live Blender too (MCP add-on): exec the file and call `build()`; it rebuilds in place.
+
+## The march leader (generated model, superseded)
+
+`leader.glb` is no longer used by the app (replaced by `knight.glb` above); the file and script are kept for reference.
 `leader.py` turns a figure generated on studio.tripo3d.ai into `frontend/public/models/leader.glb`: it drops stray
 fragments, stands the figure 1.85 m tall, bends the T-pose arms down to the sides, decimates to 8,000 triangles and
 shrinks the textures to 1K. The 17 MB source export is not in the repository; pass it with `--src`. Unlike the other

@@ -337,3 +337,19 @@ Published at https://github.com/computedocean/Imperial-Base. Day-to-day work hap
 - Not done: the model has no skeleton. It glides with the walk bob; legs and arms do not move. The fallback figure's
   saber sits slightly away from its hand, because the saber is positioned for the generated model.
 - Not verified: the blade igniting on the new figure; frame-rate effect on a real GPU.
+
+## March leader: rigged knight with arms and legs (2026-11-20)
+
+- ✅ The leader is now a skinned, walking figure (`frontend/public/models/knight.glb`, built by
+  `tools/blender/knight.py` from a CC0 Quaternius body): hood with an overhanging brim, tunic split at the front, flared
+  sleeves, long cloak, belt and sash, boots and gloves, and a saber hilt in his right hand. Legs stride and arms swing;
+  the walk is driven by the march's stride phase so he stays in step with the column. As the blade ignites at the foot
+  of the steps he blends into a second walk that holds the saber low and forward instead of swinging it.
+- The old generated statue (`leader.glb`) is no longer loaded; the primitive figure remains the loading and error
+  fallback.
+- Verified: typecheck, 155 frontend tests and the production build pass; in headless Chromium at 1600 × 900 the knight
+  walks at the head of the column, the blade lights and points forward, down and to his right (measured), no page errors,
+  60 fps reported in that run; a headless Blender rebuild from the script matches the shipped file.
+- Not verified: the look on your own GPU and screen; the Low quality preset (the model is loaded on every preset, like
+  the old one); whether his feet visibly slide (the march moves 1.03 m per step, likely longer than the walk clip's
+  stride; calculated, not observed).
