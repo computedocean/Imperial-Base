@@ -1,8 +1,13 @@
 // Client for the Commander's chat (backend/app/orders.py). Live updates arrive over the websocket;
 // these calls only send: a new order, a follow-up, or a stop.
+import { useStore } from '../state/store'
 import type { OrderInfo } from '../state/types'
 
+export const DEMO_REFUSAL = 'Demo mode: orders are disabled and nothing is sent to the base.'
+
 async function post(path: string, body: unknown): Promise<OrderInfo> {
+  // demo data is never mixed with real operations: refuse before any request leaves the browser
+  if (useStore.getState().demo) throw new Error(DEMO_REFUSAL)
   const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
   if (!r.ok) {
     let detail = `The base refused the request (${r.status}).`

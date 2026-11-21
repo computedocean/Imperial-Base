@@ -8,11 +8,13 @@ from fastapi.testclient import TestClient as _TestClient
 
 
 class _Local(_TestClient):
-    """This machine talking to itself, like the browser on the base. websocket_connect ignores base_url and
-    would send Host: testserver, so the real local host is set there too."""
+    """This machine talking to itself, like the browser on the base. websocket_connect ignores base_url and would
+    connect to ws://testserver (port 80), so the real local address and Host are given there too."""
 
     def websocket_connect(self, url, *args, headers=None, **kwargs):
-        return super().websocket_connect(url, *args, headers={"host": "127.0.0.1:8742", **(headers or {})}, **kwargs)
+        from urllib.parse import urljoin
+        return super().websocket_connect(urljoin("ws://127.0.0.1:8742", url), *args,
+                                         headers={"host": "127.0.0.1:8742", **(headers or {})}, **kwargs)
 
 
 def TestClient(app):  # noqa: N802
@@ -153,10 +155,12 @@ def test_transcript_usage(tmp_path):
         {"type": "assistant", "message": {"id": "m2", "model": "claude-opus-5-5", "usage": {"input_tokens": 1, "output_tokens": 2, "cache_read_input_tokens": 100}}},
     ]
     p.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
-    u = usage_from_transcript(str(p))
+    u = usage_from_transcript(str(p), roots=[tmp_path])
     assert u["input_tokens"] == 11 and u["output_tokens"] == 7 and u["cache_read_input_tokens"] == 100
     assert u["model"] == "claude-opus-5-5" and u["messages"] == 2
-    assert usage_from_transcript(str(tmp_path / "missing.jsonl")) is None
+    assert usage_from_transcript(str(tmp_path / "missing.jsonl"), roots=[tmp_path]) is None
+    # outside the approved folders the same file is not read at all
+    assert usage_from_transcript(str(p), roots=[tmp_path / "elsewhere"]) is None
 
 
 # ---------------------------------------------------------------- API + spool

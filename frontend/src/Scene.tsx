@@ -18,6 +18,8 @@ import { Apron } from './world/Apron'
 import { DesertRocks, Mesas } from './world/Desert'
 import { FuelDump } from './world/FuelDump'
 import { GroundFx } from './world/GroundFx'
+import { GarrisonProps } from './world/GarrisonProps'
+import { Searchlights } from './world/Searchlights'
 import { Temple } from './world/Temple'
 import { WorldRendering } from './world/Rendering'
 import { Structures } from './world/Structures'
@@ -99,6 +101,8 @@ export function Scene() {
         <Dust count={q.dust} />
         {q.dust > 0 && <GroundFx />}
         <RoadProps />
+        <GarrisonProps />
+        <Searchlights />
       </group>
       <VehicleLayer visible={!sealed} />
       <Walker visible={!sealed} />

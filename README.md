@@ -42,9 +42,13 @@ Everything runs on your own computer. No cloud services, no paid APIs, no Docker
 
 - **Live agents.** Sessions, subagents and their parent/child links, the active tool, errors, token use and
   turn summaries, all from Claude Code's supported hooks. Cursor sessions are reported too.
+- **Command overview and ISB.** One panel answers "is the base healthy, and does anything need me?"; the
+  Imperial Security Bureau panel keeps an incident register, case files and a stated-rule alert level. Command
+  search (`Ctrl K`) jumps to any agent, mission, event, facility or view.
 - **"Needs you" alerts.** A banner, a pulsing top-bar pill and the browser tab title tell you when an agent is
   waiting for a permission or a turn has failed. One click takes you to it.
-- **Orders.** A chat that starts headless Claude Code agents in this project's folder, up to four at once.
+- **Orders (opt-in).** A chat that starts headless Claude Code agents in a workspace folder of their own, up to
+  four at once. Off unless you set `IMPERIAL_ORDERS=1`.
 - **A world to explore.** Eight division buildings, a command tower with a working holo table, an underground
   server bunker showing your machine's CPU and memory, and interiors you can walk into.
 - **Five camera modes.** Free orbit, tactical map, first person, third person and cinematic tours.
@@ -67,8 +71,9 @@ start.cmd
 On first run `start.cmd` creates the Python environment, installs dependencies and builds the frontend. It then
 serves the app at **http://127.0.0.1:8742** and opens your browser.
 
-To stop it, run `stop.cmd` or press Ctrl+C in the server window. `stop.cmd` ends only what `start.cmd` or
-`dev.cmd` left listening on ports 8742 and 5273.
+To stop it, run `stop.cmd` or press Ctrl+C in the server window. `stop.cmd` ends only the servers the base
+recorded when it started them (on ports 8742 and 5273). Another program on those ports is left alone.
+`stop.cmd -DryRun` shows what it would stop.
 
 ## Connect your agents
 
@@ -81,6 +86,11 @@ python scripts\install_hooks.py --status     :: check
 python scripts\install_hooks.py --uninstall  :: remove
 ```
 
+The installer copies the hook to `%USERPROFILE%\.imperial-base\hooks\` and registers that copy, so the code every
+Claude Code session runs lives outside this checkout. It writes to `settings.json` in your Claude Code
+configuration folder: `CLAUDE_CONFIG_DIR` when that is set, otherwise `%USERPROFILE%\.claude`. Re-run it after
+updating the base to refresh the copy; it also moves an older install that pointed into the checkout. Unknown
+options, extra arguments and a relative `CLAUDE_CONFIG_DIR` are refused without changing anything.
 The installer only adds its own entries and leaves your other hooks untouched. Running it twice changes nothing,
 and it writes a timestamped backup (`settings.json.bak-imperial-*`) before every change. New Claude Code sessions
 report to the base from then on; sessions already running pick it up when restarted.
@@ -90,7 +100,9 @@ To try it for one session without touching global settings, pass the hook on the
 
 ## Using the base
 
-![The command HUD: agent roster, top bar and event feed over the live base](docs/images/base-hud.jpg)
+![The command overview in demo mode: duty tiles, items needing attention, hook activity chart and the activity feed over the base](docs/images/command-overview.jpg)
+
+*Shown in demo mode (`?demo=1`): every agent, mission and event in this picture is fictional.*
 
 ### Controls
 
@@ -101,34 +113,76 @@ To try it for one session without touching global settings, pass the hook on the
 | `3` First person | Click to lock the mouse; `WASD` to move, `Shift` to run, `E` at doors, `Esc` to release |
 | `4` Third person | A commander avatar: `WASD`, drag to turn the camera, wheel to zoom, `E` at doors |
 | `5` Cinematic | Automated tours: flyover, shuttle arrival, hangar, command chamber, server bunker, agent activity |
-| `H` / `L` | Hide the HUD / toggle building labels |
+| `Ctrl K` or `/` | Command search: agents, missions, events, case files, facilities, views, tours and actions |
+| `[` / `]` | Previous / next command panel. Arrow keys move along the navigation rail |
+| `H` / `L` | Hide the interface / toggle building labels |
 | `N` | Cycle the time of day: golden hour, dusk, night |
-| `S` or **SOUND** | Sound on or off, with a volume slider. Off by default |
+| `S` | Sound on or off (volume in the **Display** menu). Off by default |
 | Click | Agents, aircraft and building labels open the inspector; **Follow** attaches the camera |
 
-Quality (LOW, MEDIUM, HIGH, CINEMATIC) is chosen in the top bar. Sound, quality and time of day are remembered
-per browser.
+Time of day, graphics quality (Low, Medium, High, Cinematic), sound and labels live in the **Display** menu at the
+right of the top bar. They are remembered per browser.
 
 ### Panels
 
+The navigation rail on the left (a bottom bar on phones) opens one panel at a time; click the active tab again
+to fold it away.
+
 | Tab | What it does |
 |---|---|
-| **Agents** | The roster with filters (working, needs you, standby, failed) and per-agent details |
-| **Missions** | Every task, plus the **Orders** chat at the bottom |
-| **Events** | The raw event stream |
-| **Air Control** | Shuttle arrivals and departures, fighter patrols, the X-wing attack, hangar doors, the freighter escape, the walker patrol and the lightsaber duel |
-| **Facilities** | View or walk into Command, Hangar, Intelligence, Engineering, Operations, AI Labs, Security and the Server Bunker; start any cinematic tour |
+| **Overview** | Command overview: agents that need you, recent failures, a chart of hook activity (last hour or 24 hours, failures stacked), system status (agent link, capture hook, event store, Orders channel, host CPU and memory) and department occupancy |
+| **Agents** | The roster with search, status and department filters, and per-agent details |
+| **Missions** | Every task with search and status filters, plus the **Orders** chat at the bottom |
+| **Events** | The live event stream with search and type filters (errors, tools, lifecycle) |
+| **ISB** | Imperial Security Bureau: an alert level derived by a stated rule, the incident register (failed turns, tool failures, authorisation requests, Orders guard refusals) with search and filters, case files with notes, and a security posture check |
+| **Air** | Shuttle arrivals and departures, fighter patrols, the X-wing attack, hangar doors, the freighter escape, the walker patrol and the lightsaber duel |
+| **Sites** | View or walk into Command, Hangar, Intelligence, Engineering, Operations, AI Labs, Security and the Server Bunker; start any cinematic tour |
+
+### ISB and case files
+
+The ISB panel only uses signals the base already records. The alert level is a fixed rule, shown in the panel: 3
+points per agent reporting a failed turn, 1 per agent waiting for authorisation, 1 per tool failure in the last hour
+(at most 4), 2 per Orders guard refusal in the last hour, 2 when the capture hook is not installed. 0 is nominal,
+1 to 3 guarded, 4 to 7 elevated, 8 or more high. With the link offline it reads *unknown*. Simulated contacts
+(X-wings, the freighter) are listed separately and never change the level.
+
+Case files are your own notes on an agent or an incident. They are kept in this browser's local storage and are
+never sent to the base. The overview and ISB read the latest 2,000 stored events from `GET /api/events` (once a
+minute while one of those panels is open) and say how far back that reaches.
+
+### Demo mode
+
+Open `http://127.0.0.1:8742/?demo=1` to preview the interface with a fixed, fictional dataset. A **DEMO DATA**
+badge stays in the top bar, nameplates read DEMO AGENT, every demo record ends in "(demo)", the live link is not
+opened and Orders refuse before anything is sent. Beyond loading the page itself, demo mode makes no API request: the overview, the ISB
+register and the telemetry walls inside the base use the demo sample only (the walls read DEMO DATA). Demo case
+files use their own storage key. Remove `?demo=1` to return to live data.
 
 ### Orders
 
-Type an order and a Claude Code agent carries it out in the Imperial Base folder, and nowhere else.
+Orders are **off by default**. Set `IMPERIAL_ORDERS=1` before starting the base to turn them on. Type an order and
+a Claude Code agent carries it out in its workspace folder (`%USERPROFILE%\.imperial-base\orders-workspace` by
+default, `IMPERIAL_ORDERS_CWD` to change it).
 
 - Each conversation is one agent. Up to four work at once.
 - You can reply once an agent has finished its turn, or stop it while it works.
-- File edits go through. Any other action your Claude Code settings do not already allow is refused and
-  reported in the chat.
-- Conversations are kept in memory only and are gone when the server stops.
-- Set `IMPERIAL_ORDERS=0` to switch orders off.
+- By default order agents get two built-in tools, Edit and Write: they can create and change files in the
+  workspace but not read or search them. Set `IMPERIAL_ORDERS_READ=1` to add Read, Glob and Grep (see the limits
+  in [SECURITY.md](SECURITY.md#limits-residual-risks)). They never get a shell, web access, subagents, skills or
+  MCP servers.
+- A guard checks every tool call and refuses any path outside the workspace. Paths are compared without regard to
+  letter case and after following links and junctions. Deny rules also block the base's code, hooks and data,
+  your Claude Code configuration folder (`CLAUDE_CONFIG_DIR` or `~/.claude`), `~/.claude.json` and common
+  credential files such as `~/.ssh`. Refused actions are reported in the chat.
+- The base refuses to start agents if the workspace overlaps any of those, or if it holds Claude Code project
+  configuration (`CLAUDE.md`, `CLAUDE.local.md`, `.claude`, `.mcp.json`, in any letter case).
+- Order agents still load your user-level Claude Code settings, and your user hooks run in them. Orders stay off
+  if those settings (or managed settings) could widen what an agent may touch: allow rules for file tools, extra
+  working directories, hooks switched off, `bypassPermissions` as the default, or a setting the base does not
+  recognise. These are Claude Code controls, not an operating-system sandbox. See
+  [docs/AGENT_INTEGRATION.md](docs/AGENT_INTEGRATION.md#orders-the-one-command-channel) for the limits.
+- The base keeps its copy of each conversation in memory only. Claude Code keeps its usual session transcript,
+  and with the hook installed the agent's events are recorded like any other session's.
 
 ## What is real and what is simulated
 
@@ -161,8 +215,11 @@ All settings are optional environment variables, read when the server starts.
 | `IMPERIAL_STALE_AFTER` | `900` | Seconds without events before an agent's activity reads *unknown* |
 | `IMPERIAL_MAX_EVENTS` | `50000` | Events kept in the database |
 | `IMPERIAL_READ_USAGE` | `1` | Read token counts and model id from transcripts. `0` turns it off |
-| `IMPERIAL_ORDERS` | `1` | Enable the Orders chat. `0` turns it off |
-| `IMPERIAL_ORDERS_CWD` | this project | The only folder order agents work in |
+| `IMPERIAL_ORDERS` | `0` | `1` enables the Orders chat. Any other value leaves it off |
+| `IMPERIAL_ORDERS_CWD` | `<base dir>\orders-workspace` | The only folder order agents work in. Must not overlap the checkout or the base's data |
+| `IMPERIAL_ORDERS_READ` | `0` | `1` lets order agents read and search files in their workspace (Read, Glob, Grep) |
+| `IMPERIAL_TRANSCRIPT_ROOTS` | `~\.claude\projects;~\.cursor` | The only folders transcripts are read from (token counts and model id) |
+| `IMPERIAL_MAX_INGEST_BYTES` | `2097152` | Largest request body `/api/ingest` accepts |
 
 ## Development
 
@@ -172,6 +229,9 @@ test.cmd     :: pytest, vitest and the TypeScript typecheck
 ```
 
 - Asset previews: `http://127.0.0.1:5273/?preview=aircraft` and `?preview=personnel`.
+- In development the backend trusts requests forwarded by the Vite server only through a token that Vite creates
+  when it starts (see [SECURITY.md](SECURITY.md)). Vite must run on port 5273 or 5274; it will not move to another
+  port.
 - After changing frontend code, rebuild for `start.cmd` with `cd frontend && npx vite build`
   (`start.cmd` also rebuilds when it detects stale output).
 - The 3D models are built by Python scripts for Blender in `tools/blender/`. See its
@@ -183,7 +243,8 @@ See [Testing](docs/TESTING.md) for what each suite covers.
 
 ```
 backend/          FastAPI server: hook ingestion, state engine, SQLite store, Orders, WebSocket
-  app/            main.py (routes), engine.py, state.py, store.py, orders.py, system.py, config.py
+  app/            main.py (routes, request checks), engine.py, state.py, store.py, orders.py, orders_guard.py,
+                  redact.py, pathsafe.py, system.py, config.py
   tests/          pytest suites
 frontend/         React + React Three Fiber client
   src/            world, aircraft, vehicles, personnel, agents, interiors, camera, audio, ui, state
@@ -196,14 +257,20 @@ docs/             design and reference documentation
 
 ## Privacy and security
 
-- **Loopback only.** The server binds to `127.0.0.1`. WebSocket and order requests from other sites are
-  refused by checking the caller address, Host and Origin.
-- **The hook keeps little.** It never stores tool inputs or outputs, file contents, full commands or full
-  prompts. File tools are reduced to the file name, prompts to a short redacted excerpt, and secrets such as API
-  keys, tokens and e-mail addresses are redacted before anything is written.
-- **Defence in depth.** The backend accepts only an allow-list of fields and truncates strings again.
-- **One command channel.** Sessions started elsewhere are observed only. Orders reach only the agents the base
-  starts itself, in its own folder.
+- **Loopback only.** The server binds to `127.0.0.1`. Every request and WebSocket connection, including read-only
+  ones, must come from this machine with an exact loopback `Host` on the server's own port, so a web page that
+  points its own domain at 127.0.0.1 (DNS rebinding) is refused. Any `Origin` sent must be the base's own page.
+  Order and ingest requests also need a JSON body of limited size.
+- **No untrusted paths.** Paths from hook events and URLs are checked as text before any filesystem call: network
+  shares, device paths and traversal are refused, transcripts are read only from Claude Code's and Cursor's own
+  folders, and the web server serves only files inside the built frontend.
+- **The hook keeps little.** It does not store tool inputs or outputs, file contents, full commands or full
+  prompts. File tools are reduced to the file name and prompts to a short excerpt. Recognisable secrets (API keys,
+  tokens, passwords in `KEY=value` or `--password` form, credentials in URLs, e-mail addresses) are redacted
+  before anything is written. Redaction is pattern matching, so it cannot catch every secret.
+- **Defence in depth.** The backend accepts only an allow-list of fields, redacts them again and truncates strings.
+- **One command channel, opt-in.** Sessions started elsewhere are observed only. Orders are off by default and,
+  when enabled, reach only the agents the base starts itself, in a workspace separate from the base's code.
 
 Details: [Agent integration](docs/AGENT_INTEGRATION.md) and [Security policy](SECURITY.md).
 
@@ -220,6 +287,7 @@ Details: [Agent integration](docs/AGENT_INTEGRATION.md) and [Security policy](SE
 | [Performance](docs/PERFORMANCE.md) | Budgets, quality presets and measurements |
 | [Testing](docs/TESTING.md) | Test suites and how each feature was verified |
 | [Implementation status](docs/IMPLEMENTATION_STATUS.md) | Feature checklist, change log and known limitations |
+| [Interface improvement plan](docs/IMPERIAL_BASE_IMPROVEMENT_PLAN.md) | Audit findings and the plan behind the command interface overhaul |
 | [Build notes](docs/SKILL_INVENTORY.md) | The capability assessment made at the start of the project |
 
 Contributions are welcome: see [Contributing](CONTRIBUTING.md).

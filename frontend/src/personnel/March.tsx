@@ -1,13 +1,13 @@
 /**
  * The march on the Temple: a hooded dark knight leading a column of white-armoured clone troopers in
  * step along the approach and in through the great door. The troopers are built from primitives; the leader is
- * a generated model (public/models/leader.glb, see tools/blender/leader.py) with a primitive figure as its
+ * a rigged, walking model (public/models/knight.glb, see tools/blender/knight.py) with a primitive figure as its
  * fallback. Where everyone is comes from marchPlan.ts.
  * Simulated scenery — not AI agents, not real telemetry.
  */
-import { useFrame } from '@react-three/fiber'
+import { createPortal, useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
-import { Suspense, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useMemo, useRef, type ReactNode, type RefObject } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { ModelBoundary } from '../aircraft/models/Baked'
@@ -203,11 +203,51 @@ function Troopers() {
 /** rifle held across the chest, muzzle up to the left */
 const _tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, 0.9, 0))
 
-/** The generated leader figure: robed, so it glides with the walk's bob and needs no leg animation. */
-function LeaderModel() {
-  const { scene } = useGLTF('/models/leader.glb')
-  useMemo(() => scene.traverse((o) => { o.castShadow = true }), [scene])
-  return <primitive object={scene} />
+const TAU = Math.PI * 2
+const clipNamed = (clips: THREE.AnimationClip[], name: string) => clips.find((c) => c.name === name || c.name.endsWith(`|${name}`))
+
+/**
+ * The knight: a skinned figure with a real walk. The walk is not played on a clock but set from the march's own
+ * stride phase every frame, so his steps stay in time with the column (one stride = one 2π of phase = one clip
+ * cycle). As the blade lights he blends into WalkSaber, where the right arm holds the saber steady instead of
+ * swinging it. The blade is drawn at the model's BladeMount (the hilt's emitter), pointing along its +Y.
+ */
+function KnightModel({ blade, ready }: { blade: ReactNode; ready: RefObject<boolean> }) {
+  const { scene, animations } = useGLTF('/models/knight.glb')
+  const mixer = useMemo(() => new THREE.AnimationMixer(scene), [scene])
+  const rig = useMemo(() => {
+    const walk = clipNamed(animations, 'Walk')
+    const saber = clipNamed(animations, 'WalkSaber')
+    const w = walk ? mixer.clipAction(walk) : null
+    const s = saber ? mixer.clipAction(saber) : null
+    w?.play()
+    s?.play()
+    return { w, s, walkDur: walk?.duration ?? 1, saberDur: saber?.duration ?? 1 }
+  }, [animations, mixer])
+  const mount = useMemo(() => scene.getObjectByName('BladeMount') ?? null, [scene])
+  useMemo(() => scene.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) {
+      o.castShadow = true
+      o.frustumCulled = false // skinned: the bind-pose bounds do not follow the walk
+    }
+  }), [scene])
+  useEffect(() => {
+    ready.current = true
+    return () => { ready.current = false; mixer.stopAllAction() }
+  }, [mixer, ready])
+  useFrame(() => {
+    const cycle = (((state.leader.phase / TAU) % 1) + 1) % 1
+    const k = rig.s ? Math.min(1, state.blade * 1.6) : 0
+    if (rig.w) { rig.w.time = cycle * rig.walkDur; rig.w.setEffectiveWeight(1 - k) }
+    if (rig.s) { rig.s.time = cycle * rig.saberDur; rig.s.setEffectiveWeight(k) }
+    mixer.update(0)
+  })
+  return (
+    <>
+      <primitive object={scene} />
+      {mount && createPortal(blade, mount)}
+    </>
+  )
 }
 
 function Leader() {
@@ -215,6 +255,7 @@ function Leader() {
   const legs = useRef<(THREE.Mesh | null)[]>([])
   const cloak = useRef<THREE.Mesh>(null)
   const blade = useRef<THREE.Group>(null)
+  const modelReady = useRef(false)
   const m = useMemo(() => ({
     robe: new THREE.MeshStandardMaterial({ color: '#141110', roughness: 0.95, side: THREE.DoubleSide }),
     skin: new THREE.MeshStandardMaterial({ color: '#c99a76', roughness: 0.7 }),
@@ -231,7 +272,8 @@ function Leader() {
     const l = state.leader
     o.visible = t >= 0 && l.visible
     if (!o.visible) return
-    const bob = Math.abs(Math.sin(l.phase)) * 0.03
+    // the rigged knight's walk carries its own rise and fall; only the stand-in figure needs the bob
+    const bob = modelReady.current ? 0 : Math.abs(Math.sin(l.phase)) * 0.03
     o.position.set(l.x, l.y + bob, l.z)
     for (let i = 0; i < 2; i++) {
       const leg = legs.current[i]
@@ -268,17 +310,29 @@ function Leader() {
     </>
   )
 
-  return (
-    <group ref={root} rotation={[0, Math.PI, 0]} visible={false}>
-      <ModelBoundary fallback={fallback}><Suspense fallback={fallback}><LeaderModel /></Suspense></ModelBoundary>
-      {/* the saber, in the model's right hand */}
+  // the lit blade: a white core in a blue halo, grown from the emitter as it ignites (scaled in the frame loop)
+  const bladeEl = (
+    <group ref={blade} visible={false}>
+      <mesh position={[0, 0.575, 0]} material={m.core}><cylinderGeometry args={[0.018, 0.02, 1.15, 8]} /></mesh>
+      <mesh position={[0, 0.575, 0]} material={m.halo}><cylinderGeometry args={[0.055, 0.06, 1.15, 10]} /></mesh>
+    </group>
+  )
+  // the stand-in's saber, held at its right side
+  const fallbackWithSaber = (
+    <>
+      {fallback}
       <group position={[-0.47, 0.86, 0.07]} rotation={[2.25, 0, -0.12]}>
         <mesh material={m.hilt}><cylinderGeometry args={[0.022, 0.022, 0.26, 8]} /></mesh>
-        <group ref={blade} position={[0, 0.13, 0]} visible={false}>
-          <mesh position={[0, 0.575, 0]} material={m.core}><cylinderGeometry args={[0.018, 0.02, 1.15, 8]} /></mesh>
-          <mesh position={[0, 0.575, 0]} material={m.halo}><cylinderGeometry args={[0.055, 0.06, 1.15, 10]} /></mesh>
-        </group>
+        <group position={[0, 0.13, 0]}>{bladeEl}</group>
       </group>
+    </>
+  )
+
+  return (
+    <group ref={root} rotation={[0, Math.PI, 0]} visible={false}>
+      <ModelBoundary fallback={fallbackWithSaber}>
+        <Suspense fallback={fallbackWithSaber}><KnightModel blade={bladeEl} ready={modelReady} /></Suspense>
+      </ModelBoundary>
     </group>
   )
 }

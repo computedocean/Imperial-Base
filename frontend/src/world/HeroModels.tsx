@@ -21,7 +21,7 @@ export type HeroName = (typeof HERO_MODELS)[number] | string
 /** How much of the baked AO is multiplied into the albedo (direct light). 0 = aoMap only. */
 const DIRECT_AO = 0.45
 
-const EMISSIVE = new Set<MatKey>(['windows', 'red', 'amber', 'whiteLight', 'holo'])
+const EMISSIVE = new Set<MatKey>(['windows', 'red', 'amber', 'whiteLight', 'holo', 'orangeGlow', 'floodLight', 'blueShield'])
 
 function heroMaterial(key: MatKey, ao: THREE.Texture, cache: Map<string, THREE.Material>) {
   const hit = cache.get(key)

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from . import config
+from .redact import IDENTITY_FIELDS, redact_text
 from .state import Registry, Task, canonical_event
 from .store import Store
 from .transcripts import usage_from_transcript
@@ -29,7 +30,8 @@ CHUNK_BYTES = 1024 * 1024  # spool bytes read (and committed) per poll
 
 
 def sanitise(rec: Any) -> dict[str, Any] | None:
-    """Accept only the reduced hook schema (defence in depth if something else writes the spool)."""
+    """Accept only the reduced hook schema (defence in depth if something else writes the spool), and redact
+    recognisable secrets from every free-text field again (see redact.py)."""
     if not isinstance(rec, dict) or not isinstance(rec.get("event"), str) or not rec.get("session_id"):
         return None
     out: dict[str, Any] = {}
@@ -37,14 +39,16 @@ def sanitise(rec: Any) -> dict[str, Any] | None:
         if k not in ALLOWED_KEYS:
             continue
         if isinstance(v, str):
-            v = v[:600]
+            v = v[:600] if k in IDENTITY_FIELDS else redact_text(v[:600])[:600]
         elif k == "raw_keys" and isinstance(v, list):
-            v = [str(x)[:64] for x in v[:64]]
+            v = [redact_text(str(x)[:64])[:64] for x in v[:64]]
         elif k == "model" and isinstance(v, dict):
-            v = str(v.get("id") or v.get("display_name") or "")[:80]
+            v = redact_text(str(v.get("id") or v.get("display_name") or "")[:80])[:80]
         elif not isinstance(v, (int, float, bool)) and v is not None:
             continue
         out[k] = v
+    if not isinstance(out.get("session_id"), (str, int)) or not out.get("session_id"):
+        return None
     out["event"] = canonical_event(out["event"])
     out.setdefault("ts", time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()))
     return out
@@ -75,7 +79,8 @@ class Engine:
             self.registry.set_tokens(key, usage)
 
     def _note_schema(self, ev: dict[str, Any]) -> None:
-        if isinstance(ev.get("raw_keys"), list):
+        # known event names only: arbitrary names from /api/ingest would otherwise grow this map without limit
+        if isinstance(ev.get("raw_keys"), list) and ev.get("event") in KNOWN_EVENTS:
             self.schema_keys.setdefault(ev["event"], set()).update(ev["raw_keys"])
 
     # ------------------------------------------------------------------ ingestion
@@ -159,7 +164,8 @@ class Engine:
                 await self.poll_spool()
             except Exception as e:  # keep tailing no matter what
                 self.more_pending = False
-                print(f"[imperial] spool poll error: {e!r}")
+                # the error type only: an exception's text can quote the spool line it failed on
+                print(f"[imperial] spool poll error: {type(e).__name__}")
             if not self.more_pending:
                 await asyncio.sleep(config.SPOOL_POLL_SECONDS)
 
@@ -236,10 +242,10 @@ class Engine:
 
 
 def hook_installed() -> bool:
-    settings = Path.home() / ".claude" / "settings.json"
+    """Whether the user settings Claude Code actually reads (in CLAUDE_CONFIG_DIR when set) mention the hook."""
     try:
-        return "imperial-hook.js" in settings.read_text(encoding="utf-8")
-    except OSError:
+        return "imperial-hook.js" in config.user_settings_file().read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return False
 
 

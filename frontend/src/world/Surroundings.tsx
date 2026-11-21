@@ -161,6 +161,8 @@ export function BeaconBlink() {
     MAT.red().emissiveIntensity = Math.sin(t * 2.4) > 0.2 ? 5 : 0.6
     MAT.amber().emissiveIntensity = 2.4 + Math.sin(t * 1.3) * 0.6
     MAT.holo().emissiveIntensity = 2 + Math.sin(t * 3.1) * 0.25
+    MAT.orangeGlow().emissiveIntensity = 2.8 + Math.sin(t * 2.2) * 0.7
+    MAT.blueShield().emissiveIntensity = 2.6 + Math.sin(t * 1.7) * 0.5
   })
   return null
 }

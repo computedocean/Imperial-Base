@@ -195,15 +195,111 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 * ✅ **Shuttle pad** moved into the open beside the North Gate road; the shuttle and its ground crew re-routed.
 * ✅ **Speeder bike patrol** loops out of the East Gate and back in through the North Gate.
 * ✅ **Consoles**: agent consoles, terminals and the security desk rebuilt with sloped key decks, scopes and lights.
-* ✅ **`stop.cmd`** ends whatever `start.cmd` / `dev.cmd` left listening on ports 8742 and 5273.
+* ✅ **`stop.cmd`** ends the servers `start.cmd` / `dev.cmd` left listening on ports 8742 and 5273 (since phase 3:
+  only processes the base recorded itself).
 * ✅ **Orders chat** (Missions tab, `backend/app/orders.py`, `ui/OrdersChat.tsx`): the Commander types an order and
-  a headless Claude Code agent carries it out in this project's folder only, with `acceptEdits` permissions. Up to
+  a headless Claude Code agent carries it out in a separate workspace folder (originally this project's folder; see
+  the security phases below), with `acceptEdits` permissions. Up to
   four at once; reply after a turn, or stop a running agent. Local-only endpoints, conversations in memory only.
   Tests: `backend/tests/test_orders.py` (16), `frontend/src/lib/orders.test.ts` (4).
 * ✅ **Hardening (2026-11-20)**: the Origin check now compares scheme, host and port, so pages served by other
   programs on this machine are refused; test host names are no longer trusted; the `claude` CLI is looked up only
   in absolute PATH folders outside the server's and the agents' working folders.
   Not verified here: a long real order run end to end through the browser chat.
+
+## Security remediation, phase 2 (2026-11-20, branch `security/high-findings`)
+
+* ✅ **H1 Orders isolation:** off unless `IMPERIAL_ORDERS=1`; agents work in `~/.imperial-base/orders-workspace`
+  (a folder overlapping the checkout, hook copy, spool or database is refused); no shell, no MCP servers, deny
+  rules for the base's files; the installer registers a copy of the hook outside the checkout.
+* ✅ **H2 `/api/ingest`:** same request checks as the order endpoints, exact JSON content type, 2 MB body limit;
+  transcript paths checked as text and read only from `~/.claude/projects` and `~/.cursor`.
+* ✅ **H3 catch-all route:** URL paths checked as text and resolved inside `frontend/dist` before any filesystem call.
+* Tests: `backend/tests/test_security_high.py`.
+
+### Follow-up review fixes (2026-11-20, uncommitted at time of writing)
+
+* Orders get an explicit tool allowlist (`--tools Read,Edit,Write,Glob,Grep`) in place of the Bash/PowerShell
+  blocklist, `--disallowedTools mcp__*`, and the dangerous tools denied by name in `--settings`.
+* The Claude Code configuration folder (`CLAUDE_CONFIG_DIR` or `~/.claude`) and `~/.claude.json` are protected
+  paths (Read and Edit denied, no overlapping workspace); SQLite `-wal`/`-shm`/`-journal` files are protected
+  with the database; every protected path is denied exactly and with `/**`.
+* Start-up refuses a workspace with `CLAUDE.md`, `CLAUDE.local.md`, `.mcp.json` or a non-empty `.claude` at its
+  top level (any letter case); Edit is denied for those names anywhere in the workspace.
+* Not verified: the suites were not re-run in the session that made these changes, and no live order agent was
+  started. See the limits in `docs/AGENT_INTEGRATION.md`.
+
+## Security remediation, phase 3 (2026-11-20, uncommitted at time of writing)
+
+* **M2 Host validation:** one check before every route and WebSocket handshake (`LocalBoundary` in `main.py`):
+  exact loopback `Host` on the server's own port, loopback caller, `Origin` equal to the `Host`, no cross-site
+  fetches of `/api` and `/ws`, forwarding headers ignored, `--no-proxy-headers` in the start scripts. Read-only
+  endpoints are covered too; a DNS-rebinding page no longer receives the snapshot over the WebSocket.
+* **M3 dev-server trust:** the fixed Vite-origin allowlist is gone. The Vite dev server creates a token at start-up,
+  writes it to `<base dir>\dev-proxy\vite-<port>.token` and adds it to the requests it proxies; the backend
+  accepts a dev-port `Host` only with that token. `strictPort` keeps Vite on its port.
+* **M4 redaction:** new patterns in the hook (`DB_PASSWORD=`, `ANTHROPIC_API_KEY=`, quoted JSON keys,
+  `--password x`, URL credentials, `Authorization` headers, `sk_live_`, `hf_`, `glpat-`, long hex), applied to
+  every text field written. The backend applies the same patterns again (`redact.py`). Redaction is idempotent,
+  and spool errors are logged by type only.
+* **N1 Orders file boundary:** a `PreToolUse` guard (`orders_guard.py`) refuses any path outside the workspace. Read,
+  Glob and Grep are off by default (`IMPERIAL_ORDERS_READ=1` to enable), because a hook that cannot run does not
+  block the call. Deny rules now also cover common credential files.
+* **H1 follow-up:** user and managed Claude Code settings are inspected before every launch. Orders stay off for
+  file-tool allow rules, `additionalDirectories`, `disableAllHooks`, `allowManagedHooksOnly`,
+  `bypassPermissions`, unreadable files and unknown settings. Only reason codes are reported.
+* **N3:** each launch gets a uniquely named settings file (`orders-settings\orders-*.json`, created exclusively).
+  It is removed when that agent's process ends and not before.
+* **N4:** the guard compares paths without regard to letter case, slash direction or drive-letter case on Windows,
+  after resolving links, junctions and short names. Tests show where case-sensitive deny rules alone would miss a
+  variant.
+* **Operational:** `stop.ps1` stops only processes recorded by the base (process id and start time, `-DryRun` to
+  preview); registries, WebSocket messages and connections are bounded; `hook_installed` and the installer follow
+  `CLAUDE_CONFIG_DIR`; the installer validates all arguments before changing anything; error pages carry no traces.
+* Tests: `backend/tests/test_security_medium.py`, plus updated expectations in the existing suites.
+
+## Command interface overhaul (2026-11-20, uncommitted at time of writing)
+
+Plan and audit: [IMPERIAL_BASE_IMPROVEMENT_PLAN.md](IMPERIAL_BASE_IMPROVEMENT_PLAN.md). Frontend only; no backend,
+API, security-control or dependency change.
+
+* ✅ **Visual system** (`ui/styles.css`, rewritten): black and charcoal surfaces, steel structure, one crimson
+  accent; Rajdhani for display, the system UI face for body text, JetBrains Mono for data; 4 px spacing; primary,
+  secondary, ghost and danger buttons; segmented chips; cards, tables, meters and charts; empty, loading
+  (skeleton) and offline states; reduced-motion respected.
+* ✅ **Shell** (`ui/HUD.tsx`): navigation rail (Overview, Agents, Missions, Events, ISB, Air, Sites) with arrow,
+  Home and End keys and `aria-controls`; top bar with link and duty status, command search and a **Display** menu
+  (time of day, quality, sound, labels, frame rate). Responsive: short camera labels below 1480 px, two-row top bar
+  below 1000 px, bottom navigation and panel sheet below 760 px (checked at 1600, 1400, 1100 and 390 px wide).
+* ✅ **Command overview** (`ui/Overview.tsx`): duty tiles that open the filtered roster, items needing attention,
+  hook activity chart (1 h / 24 h, failures stacked) over the latest 2,000 stored events, system status (link,
+  hook, event store, Orders channel, host CPU and memory, which were received before but never shown), department
+  occupancy, scenery summary tagged SIM.
+* ✅ **ISB panel** (`ui/Isb.tsx`, `lib/intel.ts`): alert level by a stated rule (shown in the panel); incident
+  register from failed turns, tool failures, authorisation requests and Orders guard refusals, with search, severity,
+  type and time filters; case files with linked evidence and notes (`lib/cases.ts`, this browser only); security
+  posture checks; ISB personnel; simulated perimeter contacts kept apart and tagged SIM.
+* ✅ **Command search** (`ui/CommandPalette.tsx`, `lib/search.ts`): `Ctrl K` or `/`; agents, missions,
+  meaningful events, case files, simulated aircraft, panels, facilities, camera modes, tours and actions.
+* ✅ **Feed** (`lib/feed.ts`): All / Agents / Alerts / Simulation filters with counts, severity words next to colour,
+  show more, keyboard access. Source tags LIVE, SIM or DEMO on every line.
+* ✅ **Keyboard**: mission rows, feed items, key/value rows and department rows are now reachable and activate with
+  Enter or Space; filter strips are radio groups with arrow keys.
+* ✅ **Demo mode** (`?demo=1`, `lib/demo.ts`): fixed fictional dataset; DEMO DATA badge; DEMO AGENT nameplates;
+  no live link; Orders refuse before any request (`lib/orders.ts`); demo case files under their own storage key.
+* Tests: `intel.test.ts`, `cases.test.ts`, `search.test.ts`, `demo.test.ts`, `feed.test.ts`, plus two demo
+  tests in `orders.test.ts`. Browser checks (headless Chromium with the GPU, isolated server on port 8743 with a
+  temporary database): rail keys, search and Enter, Escape, filing an incident to a case and adding a note, demo
+  isolation (no POST requests, real case key untouched), and the live path with four test events posted to
+  `/api/ingest`.
+* Follow-up fixes after a browser pass at 1600 × 900 and 420 × 860:
+  * Demo isolation: the wall displays in the server bunker and AI labs (`interiors/SystemWall.tsx`) fetched
+    `GET /api/system` and were headed "(LIVE)" even in demo mode. In demo mode they no longer contact the server and
+    read "(DEMO DATA)".
+  * Phones: the agent inspector half-covered the open panel and its search field. Below 760 px it now takes the
+    panel's whole area while open and the panel is hidden (also from the keyboard and screen readers) until it closes.
+* Not verified: screen-reader announcements with a real screen reader; the interface on a touch device (only a
+  390 px viewport in a desktop browser); a long live session with many thousands of events.
 
 ## Known limitations
 
@@ -225,6 +321,8 @@ testing), the new sounds by ear, and `start.cmd` end to end (its stale-build che
 * The walker and the duellists do not react to vehicles or personnel crossing their path.
 * The picket TIE appears at range without a launch sequence; interceptors still only chase.
 * The fuel dump is rebuilt instantly when its timer ends; nothing else on the ground can be destroyed.
+* The overview chart and the ISB register cover the latest 2,000 stored events; older events are not analysed
+  (the panel says how far back the data reaches). Case files live in one browser and are not shared or backed up.
 
 ## Repository state
 
@@ -239,3 +337,19 @@ Published at https://github.com/computedocean/Imperial-Base. Day-to-day work hap
 - Not done: the model has no skeleton. It glides with the walk bob; legs and arms do not move. The fallback figure's
   saber sits slightly away from its hand, because the saber is positioned for the generated model.
 - Not verified: the blade igniting on the new figure; frame-rate effect on a real GPU.
+
+## March leader: rigged knight with arms and legs (2026-11-20)
+
+- ✅ The leader is now a skinned, walking figure (`frontend/public/models/knight.glb`, built by
+  `tools/blender/knight.py` from a CC0 Quaternius body): hood with an overhanging brim, tunic split at the front, flared
+  sleeves, long cloak, belt and sash, boots and gloves, and a saber hilt in his right hand. Legs stride and arms swing;
+  the walk is driven by the march's stride phase so he stays in step with the column. As the blade ignites at the foot
+  of the steps he blends into a second walk that holds the saber low and forward instead of swinging it.
+- The old generated statue (`leader.glb`) is no longer loaded; the primitive figure remains the loading and error
+  fallback.
+- Verified: typecheck, 155 frontend tests and the production build pass; in headless Chromium at 1600 × 900 the knight
+  walks at the head of the column, the blade lights and points forward, down and to his right (measured), no page errors,
+  60 fps reported in that run; a headless Blender rebuild from the script matches the shipped file.
+- Not verified: the look on your own GPU and screen; the Low quality preset (the model is loaded on every preset, like
+  the old one); whether his feet visibly slide (the march moves 1.03 m per step, likely longer than the walk clip's
+  stride; calculated, not observed).
