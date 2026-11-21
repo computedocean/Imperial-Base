@@ -572,3 +572,22 @@ export function lightPoolTexture(): THREE.Texture {
   return t
 }
 
+/** Radial green LED diode glow decal for taxiway centerline lighting. */
+export function diodeGlowTexture(): THREE.Texture {
+  const key = 'diode-glow'
+  if (cache.has(key)) return cache.get(key)!
+  const [c, g] = canvas(128)
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64)
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 16
+    const a = Math.exp(-t * t * 4.5) * (1 - t * t)
+    grd.addColorStop(t, `rgba(45,${Math.round(255 - t * 40)},${Math.round(140 - t * 60)},${a.toFixed(4)})`)
+  }
+  g.fillStyle = grd
+  g.fillRect(0, 0, 128, 128)
+  const t = finish(c, true, false)
+  cache.set(key, t)
+  return t
+}
+
+

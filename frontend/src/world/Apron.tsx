@@ -42,10 +42,11 @@ export function Apron() {
         .replace('#include <common>', '#include <common>\nvarying vec2 vMacroUv;')
         .replace('#include <begin_vertex>', `#include <begin_vertex>\nvMacroUv = (modelMatrix * vec4(transformed, 1.0)).xz / ${APRON_EXTENT.toFixed(1)} + 0.5; // canvas is drawn with +z at row 0 and uploaded flipY → v = 0.5 + z / E`)
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D macroMap;\nvarying vec2 vMacroUv;')
-        .replace('#include <map_fragment>', '#include <map_fragment>\n  diffuseColor.rgb *= texture2D(macroMap, vMacroUv).rgb * 2.0;')
+        .replace('#include <common>', '#include <common>\nuniform sampler2D macroMap;\nvarying vec2 vMacroUv;\nvec4 gMacroTex;')
+        .replace('#include <map_fragment>', '#include <map_fragment>\n  gMacroTex = texture2D(macroMap, vMacroUv);\n  diffuseColor.rgb *= gMacroTex.rgb * 2.0;')
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  float macroLuma = dot(gMacroTex.rgb, vec3(0.299, 0.587, 0.114));\n  float sheen = smoothstep(0.48, 0.16, macroLuma) * 0.48;\n  roughnessFactor = clamp(roughnessFactor - sheen, 0.22, 1.0);')
     }
-    m.customProgramCacheKey = () => 'imperial-apron-v1'
+    m.customProgramCacheKey = () => 'imperial-apron-v2'
     return m
   }, [])
 

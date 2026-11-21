@@ -7,6 +7,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { QUALITY, useStore } from '../state/store'
 import { lampPlacements } from '../vehicles/propPlacement'
+import { FLOODLIGHTS } from './GarrisonProps'
 import { buildGradeLut } from './grade'
 import { TOD } from './lighting'
 import { MAT } from './materials'
@@ -142,31 +143,80 @@ function Atmosphere() {
   return null
 }
 
-/** Warm pools of light on the ground under every lamp (additive decals, one draw call; dusk/night only). */
+/** Warm pools of light on the ground under every lamp and heavy floodlight tower (additive decals; dusk/night only). */
 function LightPools() {
   const tod = useStore((s) => s.timeOfDay)
   const strength = TOD[tod].lampPools
   const lamps = useMemo(() => lampPlacements(), [])
-  const ref = useRef<THREE.InstancedMesh>(null)
+  const refLamps = useRef<THREE.InstancedMesh>(null)
+  const refFloods = useRef<THREE.InstancedMesh>(null)
   const geo = useMemo(() => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), [])
-  const mat = useMemo(() => new THREE.MeshBasicMaterial({ map: lightPoolTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -10, toneMapped: false }), [])
+  const tex = useMemo(() => lightPoolTexture(), [])
+  const matLamps = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -10,
+        toneMapped: false,
+      }),
+    [tex]
+  )
+  const matFloods = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        map: tex,
+        color: new THREE.Color(0xddeaff),
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -10,
+        toneMapped: false,
+      }),
+    [tex]
+  )
+
   useLayoutEffect(() => {
-    const mesh = ref.current
-    if (!mesh) return
-    const m = new THREE.Matrix4()
-    lamps.forEach((l, i) => {
-      // the lamp head hangs 2.2 m out along the arm (local +z rotated by rotY)
-      const x = l.x + Math.sin(l.rotY) * 2.2
-      const z = l.z + Math.cos(l.rotY) * 2.2
-      m.makeScale(26, 1, 26).setPosition(x, 0.12, z)
-      mesh.setMatrixAt(i, m)
-    })
-    mesh.instanceMatrix.needsUpdate = true
-    mesh.computeBoundingSphere()
+    const meshLamps = refLamps.current
+    if (meshLamps) {
+      const m = new THREE.Matrix4()
+      lamps.forEach((l, i) => {
+        // the lamp head hangs 2.2 m out along the arm (local +z rotated by rotY)
+        const x = l.x + Math.sin(l.rotY) * 2.2
+        const z = l.z + Math.cos(l.rotY) * 2.2
+        m.makeScale(26, 1, 26).setPosition(x, 0.12, z)
+        meshLamps.setMatrixAt(i, m)
+      })
+      meshLamps.instanceMatrix.needsUpdate = true
+      meshLamps.computeBoundingSphere()
+    }
+
+    const meshFloods = refFloods.current
+    if (meshFloods) {
+      const m = new THREE.Matrix4()
+      FLOODLIGHTS.forEach((fl, i) => {
+        m.makeScale(58, 1, 58).setPosition(fl.targetX, 0.14, fl.targetZ)
+        meshFloods.setMatrixAt(i, m)
+      })
+      meshFloods.instanceMatrix.needsUpdate = true
+      meshFloods.computeBoundingSphere()
+    }
   }, [lamps, strength])
-  mat.opacity = strength * 0.32
+
+  matLamps.opacity = strength * 0.32
+  matFloods.opacity = strength * 0.52
+
   if (strength <= 0) return null
-  return <instancedMesh ref={ref} args={[geo, mat, lamps.length]} frustumCulled={false} renderOrder={2} />
+  return (
+    <>
+      <instancedMesh ref={refLamps} args={[geo, matLamps, lamps.length]} frustumCulled={false} renderOrder={2} />
+      <instancedMesh ref={refFloods} args={[geo, matFloods, FLOODLIGHTS.length]} frustumCulled={false} renderOrder={2} />
+    </>
+  )
 }
 
 /** `N` cycles golden hour → dusk → night (ignored while typing in inputs). */
