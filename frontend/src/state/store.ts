@@ -46,6 +46,7 @@ export type Selection =
 
 export interface FeedItem { id: string; ts: number; text: string; tone: 'info' | 'warn' | 'alert' | 'ok' | 'sim'; source: 'agent' | 'sim'; agentId?: string }
 export type RosterFilter = 'live' | 'working' | 'waiting' | 'attention' | 'failed' | 'all'
+export type PanelId = 'overview' | 'agents' | 'missions' | 'events' | 'isb' | 'aircraft' | 'facilities'
 export interface LiveUpdate { event: HookEvent; agents: AgentInfo[]; tasks: TaskInfo[] }
 /** Events older than this are history being caught up, not news for the feed. */
 const FEED_MAX_AGE_S = 120
@@ -64,7 +65,13 @@ interface State {
   system: SystemInfo | null
   ingest: IngestStatus | null
   feed: FeedItem[]
-  panel: 'agents' | 'missions' | 'events' | 'aircraft' | 'facilities' | null
+  panel: PanelId | null
+  /** demo mode (?demo=1): fictional data, the live link is not opened */
+  demo: boolean
+  setDemo(d: boolean): void
+  /** command search (Ctrl+K) */
+  paletteOpen: boolean
+  setPaletteOpen(o: boolean): void
   showLabels: boolean
   hudVisible: boolean
   rosterFilter: RosterFilter
@@ -129,7 +136,11 @@ export const useStore = create<State>((set, get) => ({
   system: null,
   ingest: null,
   feed: [],
-  panel: 'agents',
+  panel: 'overview',
+  demo: false,
+  setDemo(d) { set({ demo: d }) },
+  paletteOpen: false,
+  setPaletteOpen(o) { set({ paletteOpen: o }) },
   showLabels: true,
   hudVisible: true,
   rosterFilter: 'live',

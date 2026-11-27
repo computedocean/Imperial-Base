@@ -16,23 +16,35 @@ observability platform you already run.
 Registered for: `SessionStart, SessionEnd, UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure,
 SubagentStart, SubagentStop, Stop, StopFailure, Notification` (timeout 5 s).
 
-Guarantees:
+Behaviour (covered by tests in `backend/tests/test_backend.py` and `test_security_medium.py`):
 
-* exits 0 always, hard 1.5 s ceiling, never writes stdout (stdout of some hooks is injected into context);
+* exits 0 always, hard 1.5 s ceiling, writes nothing to stdout (stdout of some hooks is injected into context);
+  on any failure (bad JSON, for example) it writes nothing at all and prints nothing;
 * **no network**; appends one JSON line to `%USERPROFILE%\.imperial-base\spool\events.jsonl`;
-* never stores tool inputs or outputs, file contents, full commands or full prompts. Instead:
+* does not store tool inputs or outputs, file contents, full commands or full prompts. Instead:
   * file tools → basename only (`main.py`);
   * Bash/PowerShell → the human-written `description`, else only the first word of the command;
   * WebFetch → host name only; WebSearch/Glob → short redacted query/pattern;
-  * Agent/Task → `description` and `subagent_type` (never the delegated prompt);
+  * Agent/Task → `description` and `subagent_type` (not the delegated prompt);
   * prompts → first 160 characters, redacted; summaries → 240 characters, redacted;
-* redacts API keys, GitHub/Slack/AWS/Google tokens, JWTs, bearer/basic credentials, `key=value` secrets,
-  long opaque strings and e-mail addresses;
+* redacts every text field it writes except the session and tool-call ids and the Claude Code paths (`cwd`,
+  `transcript_path`). The patterns cover `KEY=value`, `KEY: value` and `"key": "value"` pairs whose name ends in a
+  secret word (`password`, `passwd`, `pwd`, `pass`, `token`, `secret`, `api_key`, `access_key`, `private_key`,
+  `client_secret`, `auth`, `credentials`, `cookie`, with any prefix such as `DB_` or `ANTHROPIC_`, any letter
+  case); `--password x`, `--token x`, `--api-key x` style options; `user:password@` in URLs; `Authorization` /
+  `Proxy-Authorization` headers and bare `Bearer` / `Basic` credentials; Stripe (`sk_live_`, `sk_test_`,
+  `whsec_`), Anthropic/OpenAI (`sk-`), GitHub, GitLab (`glpat-`), Hugging Face (`hf_`), Slack, AWS, Google and npm
+  tokens; JWTs; hex strings of 32+ characters; other strings of 40+ letters, digits and `+/_-`; and e-mail
+  addresses. Running it twice changes nothing. The backend applies the same patterns (`backend/app/redact.py`)
+  to every record it accepts. Pattern matching cannot recognise every secret: an unlabelled password made of
+  ordinary words passes;
 * records the *names* (not values) of the top-level payload keys, as runtime schema evidence (`/api/schema`).
 
 ## Install
 
-`python scripts\install_hooks.py` — additive, idempotent, backs up `settings.json` first.
+`python scripts\install_hooks.py` — copies the hook to `~/.imperial-base/hooks/imperial-hook.js` and registers
+that copy (so nothing that can edit the checkout can change what every session runs); additive, idempotent, backs
+up `settings.json` first, moves older entries that pointed into the checkout, refuses unknown options.
 `--status`, `--uninstall` available. Hooks from other tools are preserved.
 
 Per-session alternative without touching global settings (used for this project's validation runs):
@@ -105,13 +117,121 @@ has the same name. Role/department by `agent_type`:
 Sessions started elsewhere are observed only; nothing is ever sent to them. The base can command only the agents
 it starts itself, from the **Orders** chat (`backend/app/orders.py`):
 
+* off unless `IMPERIAL_ORDERS=1`; while off, `GET /api/commands` lists nothing and no route starts a process;
 * each conversation runs the installed `claude` CLI headless (`claude -p`, resumed for follow-ups) in one fixed
-  folder, this project (`IMPERIAL_ORDERS_CWD`); the chat cannot choose another;
-* permission mode `acceptEdits`: file edits go through, anything else your Claude Code settings do not already
-  allow is refused by the CLI and reported in the chat;
-* up to four agents work at once; 30 conversations are kept, in memory only, never in the database;
-* the agent's own hook events make it appear in the world like any other agent;
-* `IMPERIAL_ORDERS=0` switches orders off, and `GET /api/commands` then lists nothing.
+  workspace folder (`IMPERIAL_ORDERS_CWD`, default `~/.imperial-base/orders-workspace`); the chat cannot choose
+  another;
+* **tool allowlist:** `--tools Edit,Write` is the complete set of built-in tools the agent gets by default: it can
+  create and change files but not read or search them. `IMPERIAL_ORDERS_READ=1` makes it
+  `--tools Read,Edit,Write,Glob,Grep`. Reading is opt-in because its containment rests on the guard hook below,
+  and Claude Code lets a tool call through when a hook cannot be run at all. Everything else is always left out:
+  shells and other command or code tools (Bash, PowerShell, Monitor, Workflow, LSP), web and messaging tools
+  (WebFetch, WebSearch, SendMessage, PushNotification, ...), subagents and skills (Agent, Skill), scheduling
+  (Cron*, RemoteTrigger), ToolSearch, NotebookEdit and TodoWrite. `--strict-mcp-config` loads no MCP servers and
+  `--disallowedTools mcp__*` removes any MCP tool that still appears;
+* permission mode `acceptEdits`: file edits inside the workspace go through without asking. Edits anywhere else
+  need approval, which a headless run cannot get. The base keeps orders off if your settings could grant that
+  approval by rule (see below);
+* **workspace guard** (`backend/app/orders_guard.py`), installed by `--settings` as a `PreToolUse` hook for every
+  tool. It is a standalone script run with the base's own Python (`python -I`), so nothing in the workspace can
+  change what it imports. It exits 2 (Claude Code then blocks the call) unless:
+  * the tool is one the base granted (`Edit`/`Write`, or all five with read access);
+  * `file_path` (Read, Edit, Write) and `path` (Glob, Grep) name a plain local path inside the workspace. The text
+    is checked first: UNC and device paths (`\\server\share`, `\\?\`, `\\.\`), drive-relative paths, alternate
+    data streams, reserved device names, `..`, `~` and control characters are refused before any filesystem call.
+    The path is then resolved through symbolic links, junctions and short names and must still lie inside the
+    workspace. On Windows the comparison ignores letter case and slash direction. A sibling sharing a name prefix
+    (`orders-workspace2`) is outside;
+  * Glob patterns and Grep `glob` filters are relative, with no `..`, drive, leading slash or `~`;
+  * Edit and Write do not create or change `CLAUDE.md`, `CLAUDE.local.md`, `.claude` or `.mcp.json` anywhere in
+    the workspace, in any letter case.
+
+  Anything unexpected (bad input, an exception) is refused, and the reason given never repeats the path. The hook
+  command is an absolute interpreter path with plain arguments, without quotes. It is written for a POSIX shell
+  such as Git Bash, which Claude Code uses on Windows. If any of its paths would need quoting (spaces, shell
+  characters), orders stay off;
+* `--settings` also sets `disableAllHooks: false` and adds deny rules, which win over allow rules from every other
+  settings file:
+  * Read and Edit denied for the base's checkout, the hook copy, the spool folder, the database and its SQLite
+    `-wal`, `-shm` and `-journal` files, the agents' settings folder, the base's process records and dev-proxy
+    tokens, the **Claude Code configuration folder** (`CLAUDE_CONFIG_DIR` when set, otherwise `~/.claude`:
+    settings and their hooks, credentials, agents, commands, skills, plugins, transcripts), **`~/.claude.json`**
+    and common credential locations in your profile (`.ssh`, `.aws`, `.azure`, `.kube`, `.docker`, `.gnupg`,
+    `.config`, `.netrc`, `.npmrc`, `.pypirc`, `.git-credentials`, `.gitconfig`). Each path is denied both exactly
+    and with `/**`;
+  * Edit denied for `CLAUDE.md`, `CLAUDE.local.md`, `.claude` and `.mcp.json` anywhere in the workspace;
+  * the dangerous tools denied by name (Bash, PowerShell, Monitor, WebFetch, WebSearch, Agent, Skill, Workflow), and
+    without read access Read, Glob and Grep too, as a second layer behind `--tools`;
+* **one settings file per launch.** Each launch writes its `--settings` file under
+  `<base dir>\orders-settings\` with a new, unique name. The file is created exclusively and is readable by your
+  user only where the system supports that. It is removed once that agent's process has ended, whether it
+  finished, failed, was stopped or the base shut down, and not before, since Claude Code may read its settings
+  again while it runs. Concurrent launches never share or remove each other's files;
+* `--setting-sources user`: the workspace's project and local settings are not loaded;
+* **your settings are checked first.** Before reporting orders as available and again right before each launch,
+  the base reads your user settings (`settings.json` in `CLAUDE_CONFIG_DIR`, or `~/.claude`) and any managed
+  settings file. Orders stay off, with a short reason and never the settings' contents, if any of them:
+  * allows a file tool by rule (`Read`, `Edit`, `Write`, `Glob`, `Grep`, `MultiEdit`, `NotebookEdit`, in any
+    letter case, with or without a path), or allows `*`. Allow rules for other tools, which order agents do not
+    have, are fine. So are `mcp__` rules, since no MCP servers load. A matching deny rule does not make a file-tool
+    allow rule acceptable: the base does not try to merge rules itself;
+  * adds working directories (`permissions.additionalDirectories`), where edits would be approved too;
+  * switches hooks off (`disableAllHooks`) or allows only managed hooks (`allowManagedHooksOnly`), which would
+    switch the guard off;
+  * makes `bypassPermissions` the default mode;
+  * cannot be read or is not valid JSON;
+  * contains a top-level setting or a `permissions` entry the base does not recognise (it cannot tell what that
+    would do). Deny and ask rules, hooks, plugins, model, theme, environment variables and other display or login
+    settings are accepted;
+* **start-up refusal.** The base refuses to start an agent (checked for `GET /api/orders` and again right before
+  each process starts) when:
+  * the workspace overlaps any protected path above, in either direction (for example a workspace inside
+    `~/.claude`, or a workspace that contains it, such as your home folder);
+  * the workspace holds Claude Code project configuration at its top level, in any letter case: `CLAUDE.md`,
+    `CLAUDE.local.md`, `.mcp.json`, or a non-empty `.claude` folder (settings, agents, commands, skills, hooks,
+    rules) or a file of that name;
+  * `CLAUDE_CONFIG_DIR` (or another protected path) is not absolute, since the agent would resolve it against its
+    own working folder;
+  * your settings fail the check above, the `claude` command is not found, or the guard cannot be installed;
+* **inherited from your user settings.** Order agents load your user-level Claude Code settings on purpose, so
+  the base's hook reports them. That means your user hooks run (with your permissions, outside every tool
+  rule), your enabled plugins load, and your user `CLAUDE.md` is read. Managed (policy) settings apply as usual;
+* up to four agents work at once; the base keeps 30 conversations in memory, not in its database (Claude Code
+  keeps its own session transcript as usual);
+* the agent's own hook events make it appear in the world like any other agent.
+
+**Limits.** These are Claude Code controls, not an operating-system sandbox, and the base relies on the CLI to
+enforce them:
+
+* **the guard is a hook.** Claude Code lets a tool call through if a hook cannot be run at all (an interpreter that
+  will not start, or a shell that cannot run the command). The base checks before each launch that the interpreter
+  and the guard exist and that the command needs no quoting. It cannot confirm, without starting Claude Code,
+  which shell runs hooks. That is why Read, Glob and Grep are off by default. Without them, edits are also held
+  to the workspace by `acceptEdits` itself plus the settings check above. With `IMPERIAL_ORDERS_READ=1`, reading
+  outside the workspace is refused only by the guard and the deny rules;
+* **deny rules are matched as text.** The docs do not say whether path rules ignore letter case on Windows. Rules
+  are written in the on-disk case (drive letter lower-case, as Claude Code compares paths), so a differently-cased
+  path could slip past a deny rule if matching is case-sensitive. The guard compares without regard to case and
+  refuses such paths. Tests show both the gap a case-sensitive matcher would leave and the guard closing it;
+* **hook precedence.** Your own `PreToolUse` hooks still run. The base assumes Claude Code blocks a call when any
+  hook refuses it, even if another hook approves it;
+* prompt injection from anything the agent reads (its workspace, the order text) can steer it within the limits
+  above;
+* headless runs silently ignore a settings file that fails validation. If that ever happened to the `--settings`
+  file, the guard and the deny rules would be lost, but `--tools`, `--strict-mcp-config`, `--disallowedTools` and
+  `acceptEdits` are command-line flags and would still apply;
+* only the top level of the workspace is checked at start-up. `CLAUDE.md` files in subfolders are read when the
+  agent works there; the guard and deny rules stop agents writing them, but the start-up check does not look for
+  them;
+* `CLAUDE.md` files in folders above the workspace (for example your home folder) are your own and are not checked;
+* settings files left behind by a crash of the base itself (not of an agent) stay in `orders-settings\`. They hold
+  only deny rules and the guard command. The base does not sweep the folder, because another instance of the base
+  sharing the folder may be using them;
+* there is no time limit on a turn; the Commander stops a long-running agent from the chat.
+
+Not checked against a live agent: these flags, rules and the guard hook are covered by unit tests with the process
+mocked. The guard script itself is run as a separate process in the tests, including through Git Bash when it is
+installed. No real order agent was started to confirm how the installed CLI applies them.
 
 ## Other agent systems
 

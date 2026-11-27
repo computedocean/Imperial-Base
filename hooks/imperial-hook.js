@@ -20,25 +20,55 @@ const ROOT = process.env.IMPERIAL_BASE_DIR || path.join(os.homedir(), '.imperial
 const SPOOL = path.join(ROOT, 'spool', 'events.jsonl')
 const MAX_SPOOL = 20 * 1024 * 1024 // rotate at 20 MB
 
-const SECRET_RES = [
-  /\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}/g,
-  /\bgh[pousr]_[A-Za-z0-9]{16,}/g,
-  /\bgithub_pat_[A-Za-z0-9_]{20,}/g,
-  /\bxox[abprs]-[A-Za-z0-9-]{10,}/g,
-  /\bAKIA[0-9A-Z]{16}\b/g,
-  /\bAIza[0-9A-Za-z_-]{20,}/g,
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g,
-  /\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{12,}/gi,
-  /\b(api[_-]?key|token|secret|passw(or)?d|pwd|auth|authorization|client[_-]?secret)\b(\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s&'"]+)/gi,
-  /\b[A-Za-z0-9+/_-]{40,}\b/g,
-  /[\w.+-]+@[\w-]+\.[\w.-]+/g, // e-mail addresses
+// Secret redaction. Applied in this order; backend/app/redact.py applies the same patterns again on the server.
+// Keep the two in step (backend/tests/test_security_medium.py checks both against the same literal table).
+const R = '[redacted]'
+const SECRET_KEYS = '(?:api[_-]?key|apikey|access[_-]?key|secret[_-]?key|private[_-]?key|client[_-]?secret|secret|token|password|passwd|passphrase|pwd|pass|auth|credentials?|cookie)'
+// (?!\[redacted\]) keeps redaction idempotent: a value already replaced is not matched again (the backend redacts the
+// hook's output a second time, and the record's fields pass through redact() twice).
+const SECRET_RULES = [
+  // Authorization headers: the scheme word and the credential both go
+  [/\b((?:proxy-)?authorization)(["']?\s*[:=]\s*)(?:(?:bearer|basic|digest|token|negotiate|ntlm)\s+)?(?!\[redacted\])("[^"]*"|'[^']*'|[^\s,;&'"]+)/gi, `$1$2${R}`],
+  // user info in URLs: scheme://user:password@host
+  [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]+@/gi, `$1${R}@`],
+  // command-line options followed by their value: --password x, --api-key x, --db-token "x"
+  [/(?<![\w-])(--?(?:[a-z0-9]+-)*(?:password|passwd|pass|pwd|token|secret|api-?key|apikey|auth|credentials?|private-key|access-key|client-secret))(\s+)(?!\[redacted\])("[^"]*"|'[^']*'|[^\s"']+)/gi, `$1$2${R}`],
+  // key = value / key: value / "key": "value" (environment, JSON, YAML, query strings), any prefix: DB_PASSWORD=...
+  [new RegExp(`(?<![A-Za-z0-9])((?:[A-Za-z0-9]+[_.-])*${SECRET_KEYS})(["']?\\s*[:=]\\s*)(?!\\[redacted\\])("[^"]*"|'[^']*'|[^\\s,;&'"}\\])]+)`, 'gi'), `$1$2${R}`],
+  // a bare scheme credential
+  [/\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{12,}/gi, `$1 ${R}`],
+  // well-known token formats
+  [/\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{8,}/g, R],
+  [/\bwhsec_[A-Za-z0-9]{16,}/g, R],
+  [/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}/g, R],
+  [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, R],
+  [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, R],
+  [/\bglpat-[A-Za-z0-9_-]{20,}/g, R],
+  [/\bhf_[A-Za-z0-9]{20,}/g, R],
+  [/\bxox[abprs]-[A-Za-z0-9-]{10,}/g, R],
+  [/\bAKIA[0-9A-Z]{16}\b/g, R],
+  [/\bAIza[0-9A-Za-z_-]{20,}/g, R],
+  [/\bnpm_[A-Za-z0-9]{30,}/g, R],
+  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/g, R],
+  // long hex strings (API keys, hashes) and long random-looking strings
+  [/\b[0-9a-fA-F]{32,}\b/g, R],
+  [/\b[A-Za-z0-9+/_-]{40,}\b/g, R],
+  // e-mail addresses
+  [/[\w.+-]+@[\w-]+\.[\w.-]+/g, R],
 ]
-function redact(s, max) {
+function redactText(s) {
   let o = String(s == null ? '' : s)
-  for (const re of SECRET_RES) o = o.replace(re, '[redacted]')
-  o = o.replace(/\s+/g, ' ').trim()
+  for (const [re, to] of SECRET_RULES) o = o.replace(re, to)
+  return o
+}
+function redact(s, max) {
+  const o = redactText(s).replace(/\s+/g, ' ').trim()
   return max && o.length > max ? o.slice(0, max - 1) + '…' : o
 }
+// Fields that identify a session, a tool call or a local path written by Claude Code itself. Every other string in
+// the record goes through redact() once more before it is written, whatever field it came from.
+const IDENTITY_FIELDS = new Set(['v', 'ts', 'event', 'session_id', 'tool_use_id', 'agent_id', 'cwd', 'project',
+  'transcript_path', 'agent_transcript_path'])
 const base = (p) => (p ? path.basename(String(p)) : undefined)
 function host(u) {
   try { return new URL(String(u)).hostname } catch (_) { return undefined }
@@ -144,8 +174,28 @@ function reduce(p) {
       break
   }
   if (isCursor && typeof p.model === 'string' && p.model) r.model = p.model
+  for (const k of Object.keys(r)) {
+    if (IDENTITY_FIELDS.has(k)) continue
+    if (typeof r[k] === 'string') r[k] = redact(r[k], 600)
+    else if (k === 'raw_keys') r[k] = r[k].map((x) => redact(x, 64))
+    else if (r[k] && typeof r[k] === 'object') r[k] = scrubObject(r[k])
+  }
   for (const k of Object.keys(r)) if (r[k] === undefined || r[k] === null || r[k] === '') delete r[k]
   return r
+}
+
+// Nested values (the SessionStart model object, say): strings redacted at any depth, size and depth bounded.
+function scrubObject(v, depth = 0) {
+  if (depth > 4) return undefined
+  if (typeof v === 'string') return redact(v, 200)
+  if (typeof v === 'number' || typeof v === 'boolean') return v
+  if (Array.isArray(v)) return v.slice(0, 20).map((x) => scrubObject(x, depth + 1))
+  if (v && typeof v === 'object') {
+    const out = {}
+    for (const k of Object.keys(v).slice(0, 20)) out[redact(k, 64)] = scrubObject(v[k], depth + 1)
+    return out
+  }
+  return undefined
 }
 
 if (require.main === module) {
@@ -167,4 +217,4 @@ if (require.main === module) {
   process.stdin.on('error', done)
 }
 
-module.exports = { reduce, redact, toolTarget }
+module.exports = { reduce, redact, redactText, toolTarget }

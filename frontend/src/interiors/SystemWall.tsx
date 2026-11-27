@@ -6,12 +6,17 @@ import type { SystemInfo } from '../state/types'
 /** Wall display of REAL host telemetry from the backend (psutil / nvidia-smi / docker ps). */
 export function SystemWall({ position, rotationY = 0, compact = false }: { position: [number, number, number]; rotationY?: number; compact?: boolean }) {
   const live = useStore((s) => s.system)
-  const [docker, setDocker] = useState<SystemInfo['docker'] | null>(null)
+  const demo = useStore((s) => s.demo)
+  const [fetched, setDocker] = useState<SystemInfo['docker'] | null>(null)
   useEffect(() => {
+    // demo mode never touches the live server: the demo sample carries its own (unavailable) docker entry
+    if (demo) return
     let alive = true
     fetch('/api/system').then((r) => r.json()).then((d) => alive && setDocker(d.docker)).catch(() => {})
     return () => { alive = false }
-  }, [])
+  }, [demo])
+  const docker = demo ? live?.docker ?? null : fetched
+  const source = demo ? 'DEMO DATA' : 'LIVE'
   const lines: string[] = []
   if (!live) lines.push('TELEMETRY LINK DOWN — backend not connected')
   else {
@@ -33,7 +38,7 @@ export function SystemWall({ position, rotationY = 0, compact = false }: { posit
         <meshBasicMaterial color="#04121e" transparent opacity={0.92} />
       </mesh>
       <Text position={[-8.4, 4.6, 0]} fontSize={0.55} color="#7a9cff" anchorX="left" letterSpacing={0.12}>
-        {compact ? 'LOCAL COMPUTE — HOST TELEMETRY (LIVE)' : 'HARDWARE STATUS — HOST TELEMETRY (LIVE)'}
+        {compact ? `LOCAL COMPUTE — HOST TELEMETRY (${source})` : `HARDWARE STATUS — HOST TELEMETRY (${source})`}
       </Text>
       {lines.map((l, i) => (
         <Text key={i} position={[-8.4, 3.7 - i * 0.62, 0]} fontSize={0.42} color="#cfe3ff" anchorX="left">{l}</Text>

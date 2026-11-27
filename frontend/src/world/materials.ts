@@ -25,6 +25,9 @@ export const MAT = {
   stripe: lazy(() => new THREE.MeshStandardMaterial({ color: '#c9a136', roughness: 0.6, metalness: 0.2 })),
   rust: lazy(() => new THREE.MeshStandardMaterial({ color: '#7a5a44', roughness: 0.85, metalness: 0.3 })),
   sand: lazy(() => new THREE.MeshStandardMaterial({ color: '#a77d5a', roughness: 1, metalness: 0 })),
+  orangeGlow: lazy(() => new THREE.MeshStandardMaterial({ color: '#210', emissive: '#ff6611', emissiveIntensity: 3.5, toneMapped: false })),
+  floodLight: lazy(() => new THREE.MeshStandardMaterial({ color: '#222', emissive: '#fff6e0', emissiveIntensity: 5.5, toneMapped: false })),
+  blueShield: lazy(() => new THREE.MeshStandardMaterial({ color: '#012', emissive: '#3099ff', emissiveIntensity: 3.2, transparent: true, opacity: 0.85, toneMapped: false, depthWrite: false })),
 }
 
 export type MatKey = keyof typeof MAT

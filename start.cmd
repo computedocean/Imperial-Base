@@ -20,7 +20,8 @@ if errorlevel 1 (
 echo [Imperial Base] Starting command server on http://127.0.0.1:8742
 start "" http://127.0.0.1:8742/
 cd backend
-.venv\Scripts\python -m uvicorn --factory app.main:create_app --host 127.0.0.1 --port 8742 --log-level warning
+REM --no-proxy-headers: X-Forwarded-For/-Proto are never trusted; --ws-max-size: live-socket messages stay small
+.venv\Scripts\python -m uvicorn --factory app.main:create_app --host 127.0.0.1 --port 8742 --log-level warning --no-proxy-headers --ws-max-size 65536
 goto :eof
 :fail
 echo [Imperial Base] Startup failed - see messages above.

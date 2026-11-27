@@ -17,7 +17,10 @@
         "8742",
         "--reload",
         "--reload-dir",
-        "backend/app"
+        "backend/app",
+        "--no-proxy-headers",
+        "--ws-max-size",
+        "65536"
       ],
       "port": 8742
     },
@@ -35,7 +38,7 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": [
         "/c",
-        "set IMPERIAL_DB=%TEMP%\\imperial-qa.db&& backend\\.venv\\Scripts\\python.exe -m uvicorn --factory app.main:create_app --app-dir backend --host 127.0.0.1 --port 8743"
+        "set IMPERIAL_DB=%TEMP%\\imperial-qa.db&& backend\\.venv\\Scripts\\python.exe -m uvicorn --factory app.main:create_app --app-dir backend --host 127.0.0.1 --port 8743 --no-proxy-headers --ws-max-size 65536"
       ],
       "port": 8743
     },
